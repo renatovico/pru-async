@@ -5,13 +5,13 @@ SHELL = /bin/bash
 help: ## Prints available commands
 	@awk 'BEGIN {FS = ":.*##"; printf "Usage: make \033[36m<target>\033[0m\n"} /^[.a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-25s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
-payment-processor.up: ## Start the payment processor service
+processors.up: ## Start the payment processor service
 	docker compose -f docker-compose.processor.yml up -d
 
-payment-processor.down: ## Stop the payment processor service
+processors.down: ## Stop the payment processor service
 	docker compose -f docker-compose.processor.yml down --remove-orphans
 
-payment-processor.logs: ## View logs for the payment processor service
+processors.logs: ## View logs for the payment processor service
 	docker compose -f docker-compose.processor.yml logs -f
 
 compose.down: ## Stop all services and remove containers
@@ -32,3 +32,16 @@ api.bash: ## Open a bash shell in the API container
 
 docker.stats: ## Show docker stats
 	@docker stats --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}"
+
+processors.test: ## Test payment processor endpoints (health and payments)
+	@./scripts/test-health.sh
+	@./scripts/test-processors.sh
+
+processors.purge: ## Purge payment processor data
+	@./scripts/purge-processors.sh
+
+api.test.payments: ## Test POST /payments endpoint via nginx
+	@./scripts/test-api-payments.sh
+
+api.test.summary: ## Test GET /payments-summary endpoint via nginx
+	@./scripts/test-api-summary.sh
