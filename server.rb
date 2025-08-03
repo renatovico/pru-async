@@ -1,10 +1,13 @@
 require 'socket'
 require 'json'
+require_relative 'enqueuer'
 
 class PruServer
   def initialize(port = 3000)
     @port = port
     @server = TCPServer.new('0.0.0.0', @port)
+    @enqueuer = Enqueuer.new
+
     puts "🐦 Pru server starting on port #{@port}..."
   end
 
@@ -29,6 +32,8 @@ class PruServer
       handle_payments(client, headers)
     when "GET /payments-summary"
       handle_payments_summary(client, headers)
+    when "POST /purge-payments"
+      handle_purge_payments(client, headers)
     else
       send_response(client, 404, { error: "Not Found" })
     end
@@ -50,28 +55,16 @@ class PruServer
     body = client.read(content_length) if content_length > 0
     
     if body && !body.empty?
-      begin
-        data = JSON.parse(body)
-        correlation_id = data["correlationId"]
-        amount = data["amount"]
-        
-        if correlation_id && amount
-          puts "🐦 Payment received: #{correlation_id} - $#{amount}"
-          send_response(client, 200, { message: "payment received", correlationId: correlation_id })
-        else
-          send_response(client, 400, { error: "Missing correlationId or amount" })
-        end
-      rescue JSON::ParserError
-        send_response(client, 400, { error: "Invalid JSON" })
-      end
-    else
-      send_response(client, 400, { error: "Empty body" })
+      data = JSON.parse(body)
+      correlation_id = data["correlationId"]
+      amount = data["amount"]
+      
+      @enqueuer.enqueue(correlation_id: correlation_id, amount: amount)
+      send_response(client, 200, { message: "enqueued" })
     end
   end
 
   def handle_payments_summary(client, headers)
-    puts "🐦 Summary requested"
-    
     summary = {
       "default" => {
         "totalRequests" => 42,
@@ -86,11 +79,21 @@ class PruServer
     send_response(client, 200, summary)
   end
 
+  def handle_purge_payments(client, headers)
+    begin
+      @enqueuer.purge_all
+      send_response(client, 200, { message: "purged" })
+    rescue => e
+      puts "🐦 Error purging payments: #{e.message}"
+      send_response(client, 500, { error: "Internal server error" })
+    end
+  end
+
   def send_response(client, status, data)
     status_text = case status
                   when 200 then "OK"
-                  when 400 then "Bad Request"
                   when 404 then "Not Found"
+                  when 500 then "Internal Server Error"
                   else "Unknown"
                   end
 

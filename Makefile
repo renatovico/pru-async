@@ -25,6 +25,7 @@ api.setup: ## Set up the API service
 	@docker compose run --rm api01 bundle
 
 start.dev: ## Start the development environment
+	@make processors.up
 	@docker compose up -d nginx
 
 api.bash: ## Open a bash shell in the API container
@@ -45,3 +46,6 @@ api.test.payments: ## Test POST /payments endpoint via nginx
 
 api.test.summary: ## Test GET /payments-summary endpoint via nginx
 	@./scripts/test-api-summary.sh
+
+api.test.purge: ## Test POST /purge-payments endpoint via nginx
+	@./scripts/test-api-purge.sh
