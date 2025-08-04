@@ -30,7 +30,7 @@ class Store
       %w[default fallback].each_with_object({}) do |type, hash|
         hash[type] = {
           totalRequests: @redis.get("totalRequests:#{type}").to_i,
-          totalAmount: @redis.get("totalAmount:#{type}").to_f
+          totalAmount: @redis.get("totalAmount:#{type}").to_f.round(2)
         }
       end
     end
@@ -67,6 +67,11 @@ class Store
         summary[processor][:totalRequests] += 1
         summary[processor][:totalAmount] += amount
       end
+    end
+    
+    # Round to 2 decimal places to avoid floating-point precision issues
+    summary.each do |processor, data|
+      data[:totalAmount] = data[:totalAmount].round(2)
     end
     
     summary
