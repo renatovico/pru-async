@@ -94,11 +94,7 @@ class PruServer
       correlation_id = data["correlationId"]
       amount = data["amount"]
       
-      redis = Redis.new(host: 'redis')
-      if redis.set("enqueued:#{correlation_id}", 1, nx: true, ex: 3600)
-        PaymentJob.perform_async(correlation_id, amount, Time.now.iso8601(3))
-      end
-
+      PaymentJob.perform_async(correlation_id, amount, Time.now.iso8601(3))
       send_response(client, 200, { message: "enqueued" })
     end
   end
