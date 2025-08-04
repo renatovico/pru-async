@@ -42,10 +42,18 @@ make start.dev
 # Testar endpoints da API via NGINX (localhost:9999)
 make api.test.payments
 make api.test.summary
+make api.test.purge
 
 # Ver logs
 make compose.logs
 
 # Parar todos os serviços
 make compose.down
+```
+
+### Teste de Performance
+
+```bash
+# Executar teste k6 (Rinha de Backend)
+make rinha
 ```
