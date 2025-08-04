@@ -49,3 +49,10 @@ api.test.summary: ## Test GET /payments-summary endpoint via nginx
 
 api.test.purge: ## Test POST /purge-payments endpoint via nginx
 	@./scripts/test-api-purge.sh
+
+api.test.e2e: ## Run end-to-end tests for the API
+	@./scripts/e2e.sh
+
+rinha: ## Run k6 performance test (Rinha de Backend)
+	@./scripts/reset.sh
+	@./scripts/rinha.sh
