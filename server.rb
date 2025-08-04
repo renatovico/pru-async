@@ -16,9 +16,20 @@ class PruServer
   end
 
   def start
+    queue = Queue.new
+
+    5.times do
+      Thread.new do
+        loop do
+          client = queue.pop
+          handle_request(client)
+        end
+      end
+    end
+
     loop do
       client = @server.accept
-      handle_request(client)
+      queue.push(client)
     end
   end
 

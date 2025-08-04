@@ -15,19 +15,47 @@ services:
       - payment-processor
       - backend
     command: ruby server.rb
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: '30MB'
 
   api02: 
     <<: *api
     container_name: api02
     hostname: api02
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: '30MB'
 
-  sidekiq:
+  sidekiq01:
     <<: *api
-    container_name: sidekiq
-    hostname: sidekiq
-    command: bundle exec sidekiq -r ./app/payment_job.rb
+    container_name: sidekiq01
+    hostname: sidekiq01
+    command: bundle exec sidekiq -r ./app/payment_job.rb -c 5
     depends_on:
       - redis
+    deploy:
+      resources:
+        limits:
+          cpus: '0.4'
+          memory: '115MB'
+
+  sidekiq02:
+    <<: *api
+    container_name: sidekiq02
+    hostname: sidekiq02
+    command: bundle exec sidekiq -r ./app/payment_job.rb -c 5
+    depends_on:
+      - redis
+    deploy:
+      resources:
+        limits:
+          cpus: '0.4'
+          memory: '115MB'
 
   redis:
     image: redis:7-alpine
@@ -37,6 +65,11 @@ services:
       - 6379:6379
     networks:
       - backend
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: '50MB'
 
   nginx:
     image: nginx 
@@ -51,7 +84,13 @@ services:
       - redis
       - api01
       - api02
-      - sidekiq
+      - sidekiq01
+      - sidekiq02
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: '10MB'
 
 volumes:
   rubygems:

@@ -68,10 +68,4 @@ else
     echo "[$(date)] Backend não respondeu após $max_attempts tentativas" > error.logs
 fi
 
-# Clean up
-echo ""
-echo "Stopping services..."
-docker compose down
-docker compose -f ../pru/docker-compose.processor.yml down
-
 echo "Test complete!"
