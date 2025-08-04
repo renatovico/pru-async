@@ -1,4 +1,4 @@
-require_relative 'payment_worker'
+require_relative 'app/payment_worker'
 
 trap("INT") do
   puts "\n🐦 PaymentWorker shutting down gracefully..."

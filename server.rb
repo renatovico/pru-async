@@ -1,8 +1,8 @@
 require 'socket'
 require 'json'
 require 'uri'
-require_relative 'enqueuer'
-require_relative 'store'
+require_relative 'app/enqueuer'
+require_relative 'app/store'
 
 class PruServer
   def initialize(port = 3000)
