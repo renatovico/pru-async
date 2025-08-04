@@ -1,3 +1,4 @@
+$stdout.sync = true
 require_relative 'app/payment_worker'
 
 trap("INT") do
