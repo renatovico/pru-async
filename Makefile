@@ -56,3 +56,7 @@ api.test.e2e: ## Run end-to-end tests for the API
 rinha: ## Run k6 performance test (Rinha de Backend)
 	@./scripts/reset.sh
 	@./scripts/rinha.sh
+
+rinha.official: ## Run official Rinha test with scoring
+	@./scripts/reset.sh
+	@./scripts/run-local-test.sh

@@ -21,13 +21,22 @@ class PaymentJob
 
     store = Store.new
 
-    if try_processor('default', payload)
-      store.save(correlation_id: correlation_id, processor: 'default', amount: amount, timestamp: requested_at)
-      return
+    # Try default processor up to 3 times
+    3.times do |attempt|
+      if try_processor('default', payload)
+        store.save(correlation_id: correlation_id, processor: 'default', amount: amount, timestamp: requested_at)
+        puts "🐦 Payment #{correlation_id} processed by default (attempt #{attempt + 1})"
+        return
+      end
+      
+      # Small delay between retries (except after last attempt)
+      sleep(0.5) if attempt < 2
     end
 
+    # Try fallback processor if default failed
     if try_processor('fallback', payload)
       store.save(correlation_id: correlation_id, processor: 'fallback', amount: amount, timestamp: requested_at)
+      puts "🐦 Payment #{correlation_id} processed by fallback after 3 default attempts"
       return
     end
 

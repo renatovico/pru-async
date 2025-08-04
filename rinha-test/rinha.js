@@ -321,12 +321,8 @@ export function handleSummary(data) {
   };
 
   const participant = __ENV.PARTICIPANT;
-  let summaryJsonFileName = `../participantes/${participant}/partial-results.json`
-
-  if (participant == undefined) {
-    summaryJsonFileName = `./partial-results.json`
-  }
-
+  let summaryJsonFileName = `partial-results.json`  // Always save locally
+  
   result[summaryJsonFileName] = JSON.stringify(custom_data, null, 2);
 
   return result;
