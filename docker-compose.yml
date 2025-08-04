@@ -19,6 +19,12 @@ services:
     container_name: api02
     hostname: api02
 
+  worker:
+    <<: *api
+    container_name: worker
+    hostname: worker
+    command: ruby worker.rb
+
   redis:
     image: redis:7-alpine
     container_name: redis
@@ -41,6 +47,7 @@ services:
       - redis
       - api01
       - api02
+      - worker
 
 volumes:
   rubygems:
