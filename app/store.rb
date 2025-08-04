@@ -7,17 +7,20 @@ class Store
     @redis = Redis.new(host: 'redis')
   end
   
-  def save(processor:, amount:, timestamp: Time.now)
+  def save(correlation_id:, processor:, amount:, timestamp: Time.now)
     payment_data = {
       processor: processor,
+      correlationId: correlation_id,
       amount: amount,
-      timestamp: timestamp.iso8601
+      timestamp: timestamp
     }
-    
-    @redis.lpush('payments_log', payment_data.to_json)
-    
-    @redis.incr("totalRequests:#{processor}")
-    @redis.incrbyfloat("totalAmount:#{processor}", amount)
+
+    @redis.multi do
+      @redis.set("processed:#{correlation_id}", 1, ex: 3600)
+      @redis.lpush('payments_log', payment_data.to_json)
+      @redis.incr("totalRequests:#{processor}")
+      @redis.incrbyfloat("totalAmount:#{processor}", amount)
+    end
   end
   
   def summary(from: nil, to: nil)

@@ -5,6 +5,8 @@ services:
       target: base
     container_name: api01
     hostname: api01
+    environment:
+      - REDIS_URL=redis://redis:6379/0
     volumes:
       - .:/app 
       - rubygems:/usr/local/bundle
@@ -19,11 +21,13 @@ services:
     container_name: api02
     hostname: api02
 
-  worker:
+  sidekiq:
     <<: *api
-    container_name: worker
-    hostname: worker
-    command: ruby worker.rb
+    container_name: sidekiq
+    hostname: sidekiq
+    command: bundle exec sidekiq -r ./app/payment_job.rb
+    depends_on:
+      - redis
 
   redis:
     image: redis:7-alpine
@@ -47,7 +51,7 @@ services:
       - redis
       - api01
       - api02
-      - worker
+      - sidekiq
 
 volumes:
   rubygems:

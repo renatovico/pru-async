@@ -1,14 +1,15 @@
+$stdout.sync = true
+
 require 'socket'
 require 'json'
 require 'uri'
-require_relative 'app/enqueuer'
 require_relative 'app/store'
+require_relative 'app/payment_job'
 
 class PruServer
   def initialize(port = 3000)
     @port = port
     @server = TCPServer.new('0.0.0.0', @port)
-    @enqueuer = Enqueuer.new
     @store = Store.new
 
     puts "🐦 Pru server starting on port #{@port}..."
@@ -93,7 +94,11 @@ class PruServer
       correlation_id = data["correlationId"]
       amount = data["amount"]
       
-      @enqueuer.enqueue(correlation_id: correlation_id, amount: amount)
+      redis = Redis.new(host: 'redis')
+      if redis.set("enqueued:#{correlation_id}", 1, nx: true, ex: 3600)
+        PaymentJob.perform_async(correlation_id, amount, Time.now.iso8601(3))
+      end
+
       send_response(client, 200, { message: "enqueued" })
     end
   end
@@ -102,12 +107,14 @@ class PruServer
     from_param = query_params['from']
     to_param = query_params['to']
     
+    puts "🐦 Received query params: from=#{from_param}, to=#{to_param}"
+    
     summary = @store.summary(from: from_param, to: to_param)
     send_response(client, 200, summary)
   end
 
   def handle_purge_payments(client, headers)
-    @enqueuer.purge_all
+    @store.purge_all
     send_response(client, 200, { message: "purged" })
   end
 end
