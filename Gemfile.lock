@@ -21,6 +21,7 @@ PLATFORMS
   ruby
 
 DEPENDENCIES
+  connection_pool
   json
   redis
   sidekiq

@@ -1,4 +1,13 @@
 services:
+  ruby:
+    build:
+      context: .
+      target: base
+    volumes:
+      - .:/app 
+      - rubygems:/usr/local/bundle
+    working_dir: /app
+
   api01: &api
     build:
       context: .
@@ -18,8 +27,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.2'
-          memory: '30MB'
+          cpus: '0.4'
+          memory: '100MB'
 
   api02: 
     <<: *api
@@ -28,34 +37,21 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.2'
-          memory: '30MB'
+          cpus: '0.4'
+          memory: '100MB'
 
-  sidekiq01:
+  worker:
     <<: *api
-    container_name: sidekiq01
-    hostname: sidekiq01
-    command: bundle exec sidekiq -r ./app/payment_job.rb -c 5
+    container_name: worker
+    hostname: worker
+    command: bundle exec sidekiq -r ./app/payment_job.rb -c 10
     depends_on:
       - redis
     deploy:
       resources:
         limits:
           cpus: '0.4'
-          memory: '115MB'
-
-  sidekiq02:
-    <<: *api
-    container_name: sidekiq02
-    hostname: sidekiq02
-    command: bundle exec sidekiq -r ./app/payment_job.rb -c 5
-    depends_on:
-      - redis
-    deploy:
-      resources:
-        limits:
-          cpus: '0.4'
-          memory: '115MB'
+          memory: '100MB'
 
   redis:
     image: redis:7-alpine
@@ -69,7 +65,7 @@ services:
       resources:
         limits:
           cpus: '0.2'
-          memory: '50MB'
+          memory: '40MB'
 
   nginx:
     image: nginx 
@@ -84,8 +80,7 @@ services:
       - redis
       - api01
       - api02
-      - sidekiq01
-      - sidekiq02
+      - worker
     deploy:
       resources:
         limits:

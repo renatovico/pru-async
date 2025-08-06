@@ -22,7 +22,7 @@ compose.logs: ## View logs for all services
 
 api.setup: ## Set up the API service
 	@docker compose build
-	@docker compose run --rm api01 bundle
+	@docker compose run --rm ruby bundle
 
 start.dev: ## Start the development environment
 	@make processors.up

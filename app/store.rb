@@ -2,9 +2,10 @@ require 'redis'
 require 'time'
 require 'json'
 
+require_relative 'redis_pool'
+
 class Store
   def initialize
-    @redis = Redis.new(host: 'redis')
   end
   
   def save(correlation_id:, processor:, amount:, timestamp: Time.now)
@@ -15,11 +16,14 @@ class Store
       timestamp: timestamp
     }
 
-    @redis.multi do
-      @redis.set("processed:#{correlation_id}", 1, ex: 3600)
-      @redis.lpush('payments_log', payment_data.to_json)
-      @redis.incr("totalRequests:#{processor}")
-      @redis.incrbyfloat("totalAmount:#{processor}", amount)
+    RedisPool.with do |redis|
+      timestamp_score = Time.parse(timestamp.to_s).to_f
+      redis.multi do
+        redis.set("processed:#{correlation_id}", 1, ex: 3600)
+        redis.zadd('payments_log', timestamp_score, payment_data.to_json)
+        redis.incr("totalRequests:#{processor}")
+        redis.incrbyfloat("totalAmount:#{processor}", amount)
+      end
     end
   end
   
@@ -27,45 +31,44 @@ class Store
     if from || to
       calculate_filtered_summary(from, to)
     else
-      %w[default fallback].each_with_object({}) do |type, hash|
-        hash[type] = {
-          totalRequests: @redis.get("totalRequests:#{type}").to_i,
-          totalAmount: @redis.get("totalAmount:#{type}").to_f.round(2)
-        }
+      RedisPool.with do |redis|
+        %w[default fallback].each_with_object({}) do |type, hash|
+          hash[type] = {
+            totalRequests: redis.get("totalRequests:#{type}").to_i,
+            totalAmount: redis.get("totalAmount:#{type}").to_f.round(2)
+          }
+        end
       end
     end
   end
   
   def purge_all
-    @redis.flushdb
+    RedisPool.with { |redis| redis.flushdb }
   end
   
   private
   
   def calculate_filtered_summary(from, to)
-    from_time = from ? Time.parse(from) : nil
-    to_time = to ? Time.parse(to) : nil
+    from_score = from ? Time.parse(from).to_f : '-inf'
+    to_score = to ? Time.parse(to).to_f : '+inf'
     
     summary = {
       'default' => { totalRequests: 0, totalAmount: 0.0 },
       'fallback' => { totalRequests: 0, totalAmount: 0.0 }
     }
     
-    payments = @redis.lrange('payments_log', 0, -1)
-    
-    payments.each do |payment_json|
-      payment = JSON.parse(payment_json)
-      payment_time = Time.parse(payment['timestamp'])
+    RedisPool.with do |redis|
+      payments = redis.zrangebyscore('payments_log', from_score, to_score)
       
-      next if from_time && payment_time < from_time
-      next if to_time && payment_time > to_time
-      
-      processor = payment['processor']
-      amount = payment['amount'].to_f
-      
-      if summary[processor]
-        summary[processor][:totalRequests] += 1
-        summary[processor][:totalAmount] += amount
+      payments.each do |payment_json|
+        payment = JSON.parse(payment_json)
+        processor = payment['processor']
+        amount = payment['amount'].to_f
+        
+        if summary[processor]
+          summary[processor][:totalRequests] += 1
+          summary[processor][:totalAmount] += amount
+        end
       end
     end
     
