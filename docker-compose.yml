@@ -16,6 +16,7 @@ services:
     hostname: api01
     environment:
       - REDIS_URL=redis://redis:6379/0
+      - RUBY_YJIT_ENABLE=1
     volumes:
       - .:/app 
       - rubygems:/usr/local/bundle
