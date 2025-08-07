@@ -8,6 +8,7 @@ Mais uma submissão para a [Rinha de Backend 2025](https://github.com/zanfrances
 
 - Docker
 - Make
+- Força de vontade
 
 ## Setup
 
