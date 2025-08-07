@@ -2,8 +2,6 @@
 
 Mais uma submissão para a [Rinha de Backend 2025](https://github.com/zanfranceschi/rinha-de-backend-2025), desta vez em Ruby.
 
-
-
 ## Requisitos
 
 - Docker
@@ -58,3 +56,8 @@ make compose.down
 # Executar teste k6 (Rinha de Backend)
 make rinha
 ```
+
+<img width="402" height="563" alt="Screenshot 2025-08-06 at 21 16 50" src="https://github.com/user-attachments/assets/5894bd04-c8a2-419e-ab5a-8efc3de529fc" />
+
+
+> Até que Ruby escala, né?
