@@ -2,6 +2,7 @@ require 'sidekiq'
 require 'redis'
 require 'json'
 require 'net/http'
+require 'timeout'
 
 require_relative 'store'
 require_relative 'redis_pool'
@@ -56,7 +57,7 @@ class PaymentJob
     request.body = payload.to_json
     response = http.request(request)
     response.is_a?(Net::HTTPSuccess)
-  rescue Net::TimeoutError, Net::OpenTimeout, Net::ReadTimeout
+  rescue Net::OpenTimeout, Net::ReadTimeout
     false
   end
 end
