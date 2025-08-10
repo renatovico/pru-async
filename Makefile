@@ -62,7 +62,7 @@ rinha.official: ## Run official Rinha test with scoring
 	@./scripts/run-local-test.sh
 
 docker.build: ## Build the docker image
-	@docker build -t leandronsp/pru --target prod .
+	@docker build -t leandronsp/pru --target prod --platform linux/amd64 .
 
 docker.push: ## Push the docker image
 	@docker push leandronsp/pru
