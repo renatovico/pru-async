@@ -1,5 +1,16 @@
 # 🐦 Pru
 
+```
+ _______  _______          
+(  ____ )(  ____ )|\     /|
+| (    )|| (    )|| )   ( |
+| (____)|| (____)|| |   | |
+|  _____)|     __)| |   | |
+| (      | (\ (   | |   | |
+| )      | ) \ \__| (___) |
+|/       |/   \__/(_______)
+```
+
 Mais uma submissão para a [Rinha de Backend 2025](https://github.com/zanfranceschi/rinha-de-backend-2025), desta vez em Ruby.
 
 ## Requisitos
