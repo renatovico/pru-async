@@ -72,3 +72,6 @@ make rinha
 
 
 > Até que Ruby escala, né?
+
+----
+Arte ASCII feita com [ASCII art generator](http://www.network-science.de/ascii/)
