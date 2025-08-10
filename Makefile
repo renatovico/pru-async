@@ -60,3 +60,25 @@ rinha: ## Run k6 performance test (Rinha de Backend)
 rinha.official: ## Run official Rinha test with scoring
 	@./scripts/reset.sh
 	@./scripts/run-local-test.sh
+
+docker.build: ## Build the docker image
+	@docker build -t leandronsp/pru --target prod .
+
+docker.push: ## Push the docker image
+	@docker push leandronsp/pru
+
+rinha.official.prod: ## Run official Rinha using the production image
+	@docker compose -f docker-compose.prod.yml down --remove-orphans
+	@docker compose -f docker-compose.processor.yml down --remove-orphans
+
+	# Build and push the image
+	@make docker.build
+	@make docker.push
+	@docker rmi leandronsp/pru
+
+	@docker compose -f docker-compose.processor.yml up -d
+	@docker compose -f docker-compose.prod.yml up -d nginx
+
+	@./scripts/purge-processors.sh
+	@./scripts/test-api-purge.sh
+	@./scripts/run-local-test.sh

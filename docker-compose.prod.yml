@@ -1,27 +1,13 @@
 services:
-  ruby:
-    build:
-      context: .
-      target: base
-    volumes:
-      - .:/app 
-      - rubygems:/usr/local/bundle
-
   api01: &api
-    build:
-      context: .
-      target: base
+    image: leandronsp/pru
     container_name: api01
     hostname: api01
     environment:
       - REDIS_URL=redis://redis:6379/0
-    volumes:
-      - .:/app 
-      - rubygems:/usr/local/bundle
     networks:
       - payment-processor
       - backend
-    command: ruby server.rb
     deploy:
       resources:
         limits:
@@ -80,8 +66,6 @@ services:
           cpus: '0.1'
           memory: '10MB'
 
-volumes:
-  rubygems:
 networks:
   payment-processor:
     external: true
