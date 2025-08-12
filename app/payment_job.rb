@@ -28,7 +28,7 @@ class PaymentJob
         puts "🐦 Payment #{correlation_id} processed by default (attempt #{attempt + 1})"
         return
       end
-      
+
       # Small delay between retries
       sleep(0.002 * (attempt + 1)) if attempt < 2
     end
@@ -47,12 +47,12 @@ class PaymentJob
     endpoint = "http://payment-processor-#{processor_name}:8080/payments"
     uri = URI(endpoint)
     http = Net::HTTP.new(uri.host, uri.port)
-    
+
     if timeout
       http.open_timeout = timeout
-      http.read_timeout = timeout
+      http.read_timeout = timeout + 2
     end
-    
+
     request = Net::HTTP::Post.new(uri.path, 'Content-Type' => 'application/json')
     request.body = payload.to_json
     response = http.request(request)

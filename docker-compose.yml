@@ -4,8 +4,8 @@ services:
       context: .
       target: base
     volumes:
-      - .:/app 
-      - rubygems:/usr/local/bundle
+      - .:/app
+      - rubygems2:/usr/local/bundle
 
   api01: &api
     build:
@@ -16,8 +16,8 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379/0
     volumes:
-      - .:/app 
-      - rubygems:/usr/local/bundle
+      - .:/app
+      - rubygems2:/usr/local/bundle
     networks:
       - payment-processor
       - backend
@@ -28,7 +28,7 @@ services:
           cpus: '0.4'
           memory: '100MB'
 
-  api02: 
+  api02:
     <<: *api
     container_name: api02
     hostname: api02
@@ -37,7 +37,7 @@ services:
     <<: *api
     container_name: worker
     hostname: worker
-    command: bundle exec sidekiq -r ./app/payment_job.rb -c 10
+    command: bundle exec sidekiq -r ./app/payment_job.rb -c 4
     depends_on:
       - redis
     deploy:
@@ -61,7 +61,7 @@ services:
           memory: '40MB'
 
   nginx:
-    image: nginx 
+    image: nginx
     container_name: nginx
     volumes:
       - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
@@ -81,7 +81,7 @@ services:
           memory: '10MB'
 
 volumes:
-  rubygems:
+  rubygems2:
 networks:
   payment-processor:
     external: true
