@@ -11,7 +11,7 @@ require_relative 'circuit_breaker'
 class PaymentJob
 
   def self.circuit_breaker
-    @circuit_breaker ||= CircuitBreaker.new(threshold: 5, window_seconds: 5)
+    @circuit_breaker ||= CircuitBreaker.new(threshold: 5, window_seconds: 1)
   end
 
   def self.perform_now(correlation_id, amount, requested_at)

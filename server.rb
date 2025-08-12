@@ -8,6 +8,7 @@ require 'async/http/endpoint'
 require "async/http/protocol/response"
 require_relative 'app/store'
 require_relative 'app/payment_job'
+require_relative 'app/job_queue'
 
 class PruApp
   def initialize
@@ -45,11 +46,20 @@ class PruApp
     body = request.read
     return json(400, { error: 'Bad Request' }) if body.nil? || body.empty?
 
-    data = JSON.parse(body)
-    correlation_id = data['correlationId']
-    amount = data['amount']
+    # Enqueue work into background workers (outside the HTTP request fiber).
+    enqueued = JobQueue.instance.enqueue_with_timeout(0.05) do
+      begin
+        data = JSON.parse(body)
+        correlation_id = data['correlationId']
+        amount = data['amount']
+        PaymentJob.perform_now(correlation_id, amount, Time.now.iso8601(3))
+      rescue => e
+        puts "❌ Payment job failed: #{e.message}"
+      end
+    end
 
-    PaymentJob.perform_now(correlation_id, amount, Time.now.iso8601(3))
+    return json(503, { error: 'Service Unavailable', message: 'Queue is full' }) unless enqueued
+
     json(200, { message: 'enqueued' })
   rescue JSON::ParserError
     json(400, { error: 'Invalid JSON' })
@@ -96,6 +106,8 @@ if __FILE__ == $0
 
   puts "🐦 Pru server starting on port #{port}..."
   Async do |task|
+    # Start background workers once when reactor boots:
+    JobQueue.start_workers(count: 20, parent_task: task)
     server.run
   end
 end
