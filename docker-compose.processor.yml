@@ -81,7 +81,7 @@ services:
     container_name: payment-processor-fallback-db
     hostname: payment-processor-fallback-db
     volumes:
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./config/init.sql:/docker-entrypoint-initdb.d/init.sql
       - postgres-socket-02:/var/run/postgresql
 
 networks:
