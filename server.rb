@@ -52,18 +52,22 @@ class PruApp
     return json(400, { error: 'Bad Request' }) if body.nil? || body.empty?
 
   # Enqueue work into background workers (outside the HTTP request fiber).
-  @job_queue.enqueue do
+    result = @job_queue.enqueue do
       begin
         data = JSON.parse(body)
         correlation_id = data['correlationId']
         amount = data['amount']
         @payment_job.perform_now(correlation_id, amount, Time.now.iso8601(3))
       rescue => e
-        Log.exception(e, 'payment_job_failed')
+        Log.exception(e, 'payment_job_failed', correlation_id: correlation_id, backtrace: e.backtrace)
       end
     end
+    if result
+      json(200, { message: 'enqueued' })
+    else
+      json(502, { error: 'Queue in overflow' })
+    end
 
-    json(200, { message: 'enqueued' })
   rescue JSON::ParserError
     json(400, { error: 'Invalid JSON' })
   rescue => e
@@ -92,8 +96,8 @@ end
 if __FILE__ == $0
   port = Integer(ENV.fetch('PORT', '3000'))
   Log.info('server_start', port: port)
- job_queue = JobQueue.new(
-        concurrency: (ENV['QUEUE_CONCURRENCY'] || '1').to_i,
+  job_queue = JobQueue.new(
+        concurrency: (ENV['QUEUE_CONCURRENCY'] || '5192').to_i,
       )
   Async do |task|
     # Single shared Redis client per process:
@@ -110,22 +114,26 @@ if __FILE__ == $0
 
 
     # Start background workers once when reactor boots:
-      endpoint = Async::HTTP::Endpoint.parse("http://0.0.0.0:#{port}")
+    endpoint = Async::HTTP::Endpoint.parse("http://0.0.0.0:#{port}")
     app = PruApp.new(store: store, job_queue: job_queue, payment_job: payment_job)
 
-      server = Async::HTTP::Server.for(endpoint) do |request|
-        # Basic access log for debugging routing:
-        begin
-          Log.debug('request', method: request.method, path: request.path)
-          app.call(request)
-        rescue => e
-          Log.exception(e.message, 'request_log_error')
-          # ignore logging issues
-        end
+    server = Async::HTTP::Server.for(endpoint) do |request|
+      # Basic access log for debugging routing:
+      begin
+        Log.debug('request', method: request.method, path: request.path)
+        app.call(request)
+      rescue => e
+        Log.exception(e, 'request_log_error')
+        # ignore logging issues
       end
+    end
+
     begin
       server.run
+      job_queue.start
+
     ensure
+      job_queue.close
       redis_client.close
     end
   end

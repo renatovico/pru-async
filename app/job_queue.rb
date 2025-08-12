@@ -1,31 +1,41 @@
 require 'async'
-require 'async/semaphore'
-require 'async/barrier'
+require 'async/idler'
+require 'async/queue'
 require_relative 'logger'
 
 class JobQueue
-  def initialize(concurrency: 512)
-    @started = false
-    @concurrency = concurrency
-    @barrier = Async::Barrier.new
-    @semaphore = Async::Semaphore.new(@concurrency, parent: @barrier)
+  def initialize(concurrency: 512, buffer: 2048)
+    @queue = Async::Queue.new()
   end
 
-  def enqueue(&block)
-    raise 'JobQueue not started' unless @semaphore && @barrier
-    @semaphore.async(parent: @barrier, transient: true) { safe_call(block) }
-    true
-  end
+  # Start worker tasks that consume from the queue.
+  def start()
+    Log.info('job_queue_start')
 
+    # Process items from the queue:
+    idler = Async::Idler.new(0.5)
 
-  # Optional: close the queue and allow workers to drain and exit.
-  def close
-    # Stop all scheduled work
-    begin
-      @barrier&.stop
-    rescue => e
-      Log.warn('barrier_stop_error', detail: e.message)
+    while line = @queue.pop
+      idler.async do
+        safe_call(line)
+      end
     end
+  end
+
+  # Enqueue a job (callable). Returns true if enqueued, false if closed.
+  def enqueue(&block)
+    @queue.push(block)
+    true
+  rescue => e
+    Log.exception(e, 'job_enqueue_error')
+    false
+  end
+
+  # Close the queue: signal workers to stop after draining.
+  def close
+    @queue.close
+  rescue => e
+    Log.warn('queue_close_error', detail: e.message)
   end
 
   private

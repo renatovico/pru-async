@@ -27,7 +27,7 @@ class PaymentJob
     # Skip default if circuit is open
     unless @circuit_breaker.open?('default')
       2.times do |attempt|
-        if try_processor('default', payload, correlation_id, timeout: 1)
+        if try_processor('default', payload, correlation_id, timeout: 0.5)
           @store.save(correlation_id: correlation_id, processor: 'default', amount: amount, timestamp: requested_at)
           Log.debug('payment_processed', correlation_id: correlation_id, processor: 'default', attempt: attempt + 1)
           return
@@ -37,14 +37,14 @@ class PaymentJob
         Async::Task.current.sleep(0.001 * (attempt + 1))
       end
     else
-      Log.warn('circuit_open_skip', processor: 'default')
+      Log.debug('circuit_open_skip', processor: 'default')
     end
 
   # Try fallback processor if default failed (with aggressive timeout)
     if @circuit_breaker.open?('fallback')
-      Log.warn('circuit_open_skip', processor: 'fallback')
+      Log.debug('circuit_open_skip', processor: 'fallback')
     else
-      if try_processor('fallback', payload, correlation_id, timeout: 1)
+      if try_processor('fallback', payload, correlation_id, timeout: 2)
         @store.save(correlation_id: correlation_id, processor: 'fallback', amount: amount, timestamp: requested_at)
         Log.debug('payment_processed', correlation_id: correlation_id, processor: 'fallback')
         return
@@ -62,13 +62,14 @@ class PaymentJob
   end
 
   def try_processor(processor_name, payload, correlation_id, timeout: nil)
-    Async do |task|
+    Sync do
       return true if @redis.call('GET', "processed:#{correlation_id}")
 
       # Fast-fail if circuit is open
       if @circuit_breaker.open?(processor_name)
         return false
       end
+
       url = "http://payment-processor-#{processor_name}:8080/payments"
       headers = [['content-type', 'application/json']]
       body = payload.to_json
@@ -81,10 +82,14 @@ class PaymentJob
         @circuit_breaker.record_failure(processor_name) unless ok
         ok
       ensure
-        response&.close
+        begin
+          response&.close
+        rescue
+          # ignore if cannot close
+        end
       end
     rescue => e
-      Log.debug(e.message, 'processor_error', processor: processor_name, correlation_id: correlation_id)
+      Log.debug(e, kind: 'processor_error', processor: processor_name, correlation_id: correlation_id)
       @circuit_breaker.record_failure(processor_name)
       false
     end

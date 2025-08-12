@@ -1,50 +1,32 @@
 require 'time'
 
-# A simple in-memory circuit breaker with a sliding time window.
-# Not distributed: state is local to the current process.
+# Minimal in-memory circuit breaker with a sliding time window.
+# Open = failures within the last `window_seconds` are GREATER than `threshold`.
 class CircuitBreaker
   DEFAULT_THRESHOLD = 5
   DEFAULT_WINDOW_SECONDS = 5
 
-  def initialize(threshold: DEFAULT_THRESHOLD, window_seconds: DEFAULT_WINDOW_SECONDS, clock: -> { Time.now.to_f })
+  def initialize(threshold: DEFAULT_THRESHOLD, window_seconds: DEFAULT_WINDOW_SECONDS)
     @threshold = threshold
     @window = window_seconds
-    @clock = clock
     @failures = Hash.new { |h, k| h[k] = [] } # processor => [timestamps]
   end
 
-  # Returns true if the circuit is open for the given processor.
+  # Returns true if failures in the current window are > threshold.
   def open?(processor)
-    now = @clock.call
-  list = @failures[processor]
-  prune!(list, now)
-  list.length >= @threshold
-  end
-
-  # Record a failure event for the given processor.
-  def record_failure(processor)
-    now = @clock.call
-  list = @failures[processor]
-  list << now
-  prune!(list, now)
-  end
-
-  # Optional helper to clear failures (not used currently).
-  def reset(processor = nil)
-    if processor
-      @failures.delete(processor)
-    else
-      @failures.clear
-    end
-  end
-
-  private
-
-  def prune!(list, now)
+    now = Time.now.to_f
+    list = (@failures[processor] ||= [])
     cutoff = now - @window
-    # Remove entries older than the window.
-    while list.first && list.first < cutoff
-      list.shift
-    end
+    list.reject! { |t| t < cutoff }
+    list.length > @threshold
+  end
+
+  # Record a failure for the processor and prune old entries.
+  def record_failure(processor)
+    now = Time.now.to_f
+    list = (@failures[processor] ||= [])
+    list << now
+    cutoff = now - @window
+    list.reject! { |t| t < cutoff }
   end
 end
