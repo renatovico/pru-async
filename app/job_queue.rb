@@ -1,20 +1,13 @@
 require 'async'
 require 'async/queue'
 require 'async/limited_queue'
-require 'singleton'
-
 class JobQueue
-  include Singleton
 
-  def initialize
-  # Bounded queue to avoid unbounded memory use; tune capacity as needed:
-  @queue = Async::LimitedQueue.new(512)
+  def initialize(capacity: 512)
+    # Bounded queue to avoid unbounded memory use; tune capacity as needed:
+    @queue = Async::LimitedQueue.new(capacity)
     @started = false
     @tasks = []
-  end
-
-  def self.enqueue(&block)
-    instance.enqueue(&block)
   end
 
   def enqueue(&block)
@@ -32,10 +25,6 @@ class JobQueue
     false
   rescue Async::Queue::Closed
     false
-  end
-
-  def self.start_workers(count: 5, parent_task: nil)
-    instance.start_workers(count: count, parent_task: parent_task)
   end
 
   def start_workers(count:, parent_task: nil)
@@ -58,10 +47,6 @@ class JobQueue
   end
 
   # Optional: close the queue and allow workers to drain and exit.
-  def self.close
-    instance.close
-  end
-
   def close
     @queue.close
   end

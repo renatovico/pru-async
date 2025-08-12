@@ -26,7 +26,7 @@ api.setup: ## Set up the API service
 
 start.dev: ## Start the development environment
 	@make processors.up
-	@docker compose up -d nginx
+	@docker compose up -d traefik
 
 api.bash: ## Open a bash shell in the API container
 	@docker compose run --rm api01 bash
@@ -41,13 +41,13 @@ processors.test: ## Test payment processor endpoints (health and payments)
 processors.purge: ## Purge payment processor data
 	@./scripts/purge-processors.sh
 
-api.test.payments: ## Test POST /payments endpoint via nginx
+api.test.payments: ## Test POST /payments endpoint via proxy
 	@./scripts/test-api-payments.sh
 
-api.test.summary: ## Test GET /payments-summary endpoint via nginx
+api.test.summary: ## Test GET /payments-summary endpoint via proxy
 	@./scripts/test-api-summary.sh
 
-api.test.purge: ## Test POST /purge-payments endpoint via nginx
+api.test.purge: ## Test POST /purge-payments endpoint via proxy
 	@./scripts/test-api-purge.sh
 
 api.test.e2e: ## Run end-to-end tests for the API
@@ -77,7 +77,7 @@ rinha.official.prod: ## Run official Rinha using the production image
 	@docker rmi renatoelias/pru-async
 
 	@docker compose -f docker-compose.processor.yml up -d
-	@docker compose -f docker-compose.prod.yml up -d nginx
+	@docker compose -f docker-compose.prod.yml up -d traefik
 
 	@./scripts/purge-processors.sh
 	@./scripts/test-api-purge.sh

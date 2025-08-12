@@ -53,7 +53,7 @@ make processors.down
 # Iniciar ambiente de desenvolvimento
 make start.dev
 
-# Testar endpoints da API via NGINX (localhost:9999)
+# Testar endpoints da API via proxy Ruby (localhost:9999)
 make api.test.payments
 make api.test.summary
 make api.test.purge

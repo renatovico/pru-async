@@ -1,7 +1,7 @@
 require 'async'
 require 'async/redis'
 
-module RedisPool
+class RedisPool
   class Adapter
     def initialize(client)
       @client = client
@@ -53,9 +53,14 @@ module RedisPool
     end
   end
 
+  def initialize(url: ENV['REDIS_URL'] || 'redis://redis:6379/0')
+    @url = url
+    @task_key = :"@redis_client_#{object_id}"
+  end
+
   # Yield an adapter bound to an Async::Task-local client when possible.
   # If not within an Async task, a temporary client is created and closed after yielding.
-  def self.with
+  def with
     task = begin
       Async::Task.current?
     rescue
@@ -63,10 +68,10 @@ module RedisPool
     end
 
     if task
-      client = task.instance_variable_get(:@redis_client)
+      client = task.instance_variable_get(@task_key)
       unless client
         client = Async::Redis::Client.new(build_endpoint)
-        task.instance_variable_set(:@redis_client, client)
+        task.instance_variable_set(@task_key, client)
       end
       yield Adapter.new(client)
     else
@@ -79,24 +84,25 @@ module RedisPool
     end
   end
 
-  def self.close
+  def close
     task = begin
       Async::Task.current?
     rescue
       nil
     end
     if task
-      if (client = task.instance_variable_get(:@redis_client))
+      if (client = task.instance_variable_get(@task_key))
         client.close
-        task.remove_instance_variable(:@redis_client)
+        task.remove_instance_variable(@task_key)
       end
     end
   end
 
-  def self.build_endpoint
-    url = ENV['REDIS_URL'] || 'redis://redis:6379/0'
+  private
+
+  def build_endpoint
     if defined?(Async::Redis::Endpoint) && Async::Redis::Endpoint.respond_to?(:parse)
-      Async::Redis::Endpoint.parse(url)
+      Async::Redis::Endpoint.parse(@url)
     else
       Async::Redis.local_endpoint
     end

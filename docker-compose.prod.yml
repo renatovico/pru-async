@@ -33,17 +33,18 @@ services:
          cpus: '0.2'
          memory: '40MB'
 
-  nginx:
-    image: nginx
-    container_name: nginx
-    volumes:
-      - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
+  traefik:
+    image: traefik:v3.1
+    container_name: traefik
+    command: --configFile=/etc/traefik/traefik.yml
     ports:
       - 9999:9999
+    volumes:
+      - ./config/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./config/traefik/dynamic:/etc/traefik/dynamic:ro
     networks:
       - backend
     depends_on:
-      - redis
       - api01
       - api02
     deploy:

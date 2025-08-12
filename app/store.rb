@@ -5,7 +5,8 @@ require 'bigdecimal'
 require_relative 'redis_pool'
 
 class Store
-  def initialize
+  def initialize(redis_pool:)
+    @redis_pool = redis_pool
   end
 
   def save(correlation_id:, processor:, amount:, timestamp: Time.now)
@@ -16,7 +17,7 @@ class Store
       timestamp: timestamp
     }
 
-    RedisPool.with do |redis|
+  @redis_pool.with do |redis|
       timestamp_score = Time.parse(timestamp.to_s).to_f
       redis.multi do
         redis.set("processed:#{correlation_id}", 1, ex: 3600)
@@ -31,7 +32,7 @@ class Store
   end
 
   def purge_all
-    RedisPool.with { |redis| redis.flushdb }
+  @redis_pool.with { |redis| redis.flushdb }
   end
 
   private
@@ -45,7 +46,7 @@ class Store
       'fallback' => { totalRequests: 0, totalAmount: BigDecimal("0.00") }
     }
 
-    RedisPool.with do |redis|
+  @redis_pool.with do |redis|
       payments = redis.zrangebyscore('payments_log', from_score, to_score)
 
       payments.each do |payment_json|

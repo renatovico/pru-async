@@ -1,18 +1,19 @@
-$stdout.sync = true
-
 require 'json'
 require 'uri'
 require 'async'
 require 'async/http/server'
 require 'async/http/endpoint'
 require "async/http/protocol/response"
+require 'time'
 require_relative 'app/store'
 require_relative 'app/payment_job'
 require_relative 'app/job_queue'
 
 class PruApp
-  def initialize
-    @store = Store.new
+  def initialize(store:, job_queue:, payment_job:)
+    @store = store
+    @job_queue = job_queue
+    @payment_job = payment_job
   end
 
   # Handle an incoming Protocol::HTTP::Request and return Protocol::HTTP::Response
@@ -25,6 +26,8 @@ class PruApp
       handle_payments(request)
     when ['GET', '/payments-summary']
       handle_payments_summary(request)
+    when ['GET', '/health']
+      json(200, { ok: true })
     when ['POST', '/purge-payments']
       handle_purge_payments(request)
     else
@@ -46,13 +49,14 @@ class PruApp
     body = request.read
     return json(400, { error: 'Bad Request' }) if body.nil? || body.empty?
 
-    # Enqueue work into background workers (outside the HTTP request fiber).
-    enqueued = JobQueue.instance.enqueue do
+  # Enqueue work into background workers (outside the HTTP request fiber).
+  enqueue_timeout = ((ENV['ENQUEUE_TIMEOUT_MS'] || '5').to_i / 1000.0)
+  enqueued = @job_queue.enqueue_with_timeout(enqueue_timeout) do
       begin
         data = JSON.parse(body)
         correlation_id = data['correlationId']
         amount = data['amount']
-        PaymentJob.perform_now(correlation_id, amount, Time.now.iso8601(3))
+    @payment_job.perform_now(correlation_id, amount, Time.now.iso8601(3))
       rescue => e
         puts "❌ Payment job failed: #{e.message}"
       end
@@ -89,14 +93,13 @@ end
 if __FILE__ == $0
   port = Integer(ENV.fetch('PORT', '3000'))
   endpoint = Async::HTTP::Endpoint.parse("http://0.0.0.0:#{port}")
-
-  app = PruApp.new
+  app = nil
 
   server = Async::HTTP::Server.for(endpoint) do |request|
     # Basic access log for debugging routing:
     begin
       puts "➡️  #{request.method} #{request.path}"
-            app.call(request)
+      app.call(request)
 
     rescue => e
       puts "❌ Error logging request: #{e.message}"
@@ -105,9 +108,17 @@ if __FILE__ == $0
   end
 
   puts "🐦 Pru server starting on port #{port}..."
+
   Async do |task|
     # Start background workers once when reactor boots:
-    JobQueue.start_workers(count: 200, parent_task: task)
+  redis_pool = RedisPool.new
+  store = Store.new(redis_pool: redis_pool)
+  job_queue = JobQueue.new(capacity: 512)
+  payment_job = PaymentJob.new(store: store, redis_pool: redis_pool)
+
+  job_queue.start_workers(count: 512, parent_task: task)
+
+  app = PruApp.new(store: store, job_queue: job_queue, payment_job: payment_job)
     server.run
   end
 end
