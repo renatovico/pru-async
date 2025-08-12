@@ -8,8 +8,8 @@ x-service-templates:
       resources:
         limits:
           cpus: "1.5"
-          memory: "256MB"
-
+          memory: "100MB"
+  
   payment-processor-db: &payment-processor-db
     image: postgres:17-alpine
     networks:
@@ -24,7 +24,7 @@ x-service-templates:
       resources:
         limits:
           cpus: "1.5"
-          memory: "512MB"
+          memory: "250MB"
 
 services:
   payment-processor-1:
@@ -40,7 +40,7 @@ services:
       - 8001:8080
     depends_on:
       - payment-processor-db-1
-
+    
   payment-processor-db-1:
     <<: *payment-processor-db
     container_name: payment-processor-default-db
@@ -61,7 +61,7 @@ services:
       - 8002:8080
     depends_on:
       - payment-processor-db-2
-
+  
   payment-processor-db-2:
     <<: *payment-processor-db
     container_name: payment-processor-fallback-db
