@@ -5,6 +5,8 @@ require 'async/http/server'
 require 'async/http/endpoint'
 require "async/http/protocol/response"
 require 'time'
+require_relative 'app/logger'
+require 'async/redis'
 require_relative 'app/store'
 require_relative 'app/payment_job'
 require_relative 'app/job_queue'
@@ -50,19 +52,16 @@ class PruApp
     return json(400, { error: 'Bad Request' }) if body.nil? || body.empty?
 
   # Enqueue work into background workers (outside the HTTP request fiber).
-  enqueue_timeout = ((ENV['ENQUEUE_TIMEOUT_MS'] || '5').to_i / 1000.0)
-  enqueued = @job_queue.enqueue_with_timeout(enqueue_timeout) do
+  @job_queue.enqueue do
       begin
         data = JSON.parse(body)
         correlation_id = data['correlationId']
         amount = data['amount']
-    @payment_job.perform_now(correlation_id, amount, Time.now.iso8601(3))
+        @payment_job.perform_now(correlation_id, amount, Time.now.iso8601(3))
       rescue => e
-        puts "❌ Payment job failed: #{e.message}"
+        Log.exception(e, 'payment_job_failed')
       end
     end
-
-    return json(503, { error: 'Service Unavailable', message: 'Queue is full' }) unless enqueued
 
     json(200, { message: 'enqueued' })
   rescue JSON::ParserError
@@ -78,7 +77,7 @@ class PruApp
     from_param = params['from']
     to_param = params['to']
 
-    puts "🐦 Received query params: from=#{from_param}, to=#{to_param}"
+  Log.debug('payments_summary_params', from: from_param, to: to_param)
 
     summary = @store.summary(from: from_param, to: to_param)
     json(200, summary)
@@ -92,33 +91,42 @@ end
 
 if __FILE__ == $0
   port = Integer(ENV.fetch('PORT', '3000'))
-  endpoint = Async::HTTP::Endpoint.parse("http://0.0.0.0:#{port}")
-  app = nil
-
-  server = Async::HTTP::Server.for(endpoint) do |request|
-    # Basic access log for debugging routing:
-    begin
-      puts "➡️  #{request.method} #{request.path}"
-      app.call(request)
-
-    rescue => e
-      puts "❌ Error logging request: #{e.message}"
-      # ignore logging issues
-    end
-  end
-
-  puts "🐦 Pru server starting on port #{port}..."
+  Log.info('server_start', port: port)
 
   Async do |task|
+    # Single shared Redis client per process:
+    redis_endpoint = if defined?(Async::Redis::Endpoint) && Async::Redis::Endpoint.respond_to?(:parse)
+      Async::Redis::Endpoint.parse(ENV['REDIS_URL'] || 'redis://redis:6379/0')
+    else
+      Async::Redis.local_endpoint
+    end
+    redis_client = Async::Redis::Client.new(redis_endpoint)
+
+    store = Store.new(redis_client: redis_client)
+    job_queue = JobQueue.new(
+        concurrency: (ENV['QUEUE_CONCURRENCY'] || '1024').to_i,
+      )
+    payment_job = PaymentJob.new(store: store, redis_client: redis_client)
+
+
     # Start background workers once when reactor boots:
-  redis_pool = RedisPool.new
-  store = Store.new(redis_pool: redis_pool)
-  job_queue = JobQueue.new(capacity: 512)
-  payment_job = PaymentJob.new(store: store, redis_pool: redis_pool)
+      endpoint = Async::HTTP::Endpoint.parse("http://0.0.0.0:#{port}")
+    app = PruApp.new(store: store, job_queue: job_queue, payment_job: payment_job)
 
-  job_queue.start_workers(count: 512, parent_task: task)
-
-  app = PruApp.new(store: store, job_queue: job_queue, payment_job: payment_job)
-    server.run
+      server = Async::HTTP::Server.for(endpoint) do |request|
+        # Basic access log for debugging routing:
+        begin
+          Log.debug('request', method: request.method, path: request.path)
+          app.call(request)
+        rescue => e
+          Log.exception(e, 'request_log_error')
+          # ignore logging issues
+        end
+      end
+    begin
+      server.run
+    ensure
+      redis_client.close
+    end
   end
 end

@@ -12,8 +12,8 @@ api:
   dashboard: false
 
 log:
-  level: INFO
+  level: WARN
 
-accessLog:
-  format: json
-  bufferingSize: 0
+# accessLog:
+#   format: json
+#   bufferingSize: 0

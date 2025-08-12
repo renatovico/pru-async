@@ -1,53 +1,38 @@
 require 'async'
-require 'async/queue'
-require 'async/limited_queue'
-class JobQueue
+require 'async/semaphore'
+require 'async/barrier'
+require_relative 'logger'
 
-  def initialize(capacity: 512)
-    # Bounded queue to avoid unbounded memory use; tune capacity as needed:
-    @queue = Async::LimitedQueue.new(capacity)
+class JobQueue
+  def initialize(concurrency: 512)
     @started = false
-    @tasks = []
+    @concurrency = concurrency
+    @barrier = Async::Barrier.new
+    @semaphore = Async::Semaphore.new(@concurrency, parent: @barrier)
   end
 
   def enqueue(&block)
-    @queue.push(block)
+    raise 'JobQueue not started' unless @semaphore && @barrier
+    @semaphore.async(parent: @barrier, transient: true) { safe_call(block) }
+    true
   end
 
-  # Try to enqueue with a timeout to avoid blocking the HTTP fiber indefinitely.
-  # Returns true if enqueued, false if timed out or queue is closed.
-  def enqueue_with_timeout(timeout_seconds, &block)
-    Async::Task.current.with_timeout(timeout_seconds) do
-      @queue.push(block)
-      true
-    end
-  rescue Async::TimeoutError
-    false
-  rescue Async::Queue::Closed
-    false
-  end
-
-  def start_workers(count:, parent_task: nil)
-    return if @started
-    @started = true
-
-    spawner = parent_task || Async
-
-    count.times do
-      @tasks << spawner.async(transient: true) do
-        while (job = @queue.pop)
-          begin
-            job.call
-          rescue => e
-            puts "❌ Job failed: #{e.message}"
-          end
-        end
-      end
-    end
-  end
 
   # Optional: close the queue and allow workers to drain and exit.
   def close
-    @queue.close
+    # Stop all scheduled work
+    begin
+      @barrier&.stop
+    rescue => e
+      Log.warn('barrier_stop_error', detail: e.message)
+    end
+  end
+
+  private
+
+  def safe_call(job)
+    job.call
+  rescue => e
+  Log.exception(e, 'job_failed')
   end
 end

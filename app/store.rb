@@ -2,11 +2,11 @@ require 'time'
 require 'json'
 require 'bigdecimal'
 
-require_relative 'redis_pool'
+require 'async'
 
 class Store
-  def initialize(redis_pool:)
-    @redis_pool = redis_pool
+  def initialize(redis_client:)
+    @redis = redis_client
   end
 
   def save(correlation_id:, processor:, amount:, timestamp: Time.now)
@@ -17,13 +17,12 @@ class Store
       timestamp: timestamp
     }
 
-  @redis_pool.with do |redis|
-      timestamp_score = Time.parse(timestamp.to_s).to_f
-      redis.multi do
-        redis.set("processed:#{correlation_id}", 1, ex: 3600)
-        redis.zadd('payments_log', timestamp_score, payment_data.to_json)
-      end
-    end
+  timestamp_score = Time.parse(timestamp.to_s).to_f
+  # Use a simple transaction to ensure both updates happen together.
+  @redis.call('MULTI')
+  @redis.call('SET', "processed:#{correlation_id}", '1', 'EX', 3600)
+  @redis.call('ZADD', 'payments_log', timestamp_score, payment_data.to_json)
+  @redis.call('EXEC')
   end
 
   # Summarize payments, optionally filtered by timestamp window
@@ -32,7 +31,7 @@ class Store
   end
 
   def purge_all
-  @redis_pool.with { |redis| redis.flushdb }
+  @redis.call('FLUSHDB')
   end
 
   private
@@ -46,18 +45,16 @@ class Store
       'fallback' => { totalRequests: 0, totalAmount: BigDecimal("0.00") }
     }
 
-  @redis_pool.with do |redis|
-      payments = redis.zrangebyscore('payments_log', from_score, to_score)
+    payments = @redis.call('ZRANGEBYSCORE', 'payments_log', from_score, to_score)
 
-      payments.each do |payment_json|
-        payment = JSON.parse(payment_json)
-        processor = payment['processor']
-        amount = payment['amount'].to_f
+    payments.each do |payment_json|
+      payment = JSON.parse(payment_json)
+      processor = payment['processor']
+      amount = payment['amount'].to_f
 
-        if summary[processor]
-          summary[processor][:totalRequests] += 1
-          summary[processor][:totalAmount] += BigDecimal(amount, 12)
-        end
+      if summary[processor]
+        summary[processor][:totalRequests] += 1
+        summary[processor][:totalAmount] += BigDecimal(amount, 12)
       end
     end
 

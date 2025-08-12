@@ -28,7 +28,7 @@ services:
       resources:
         limits:
           cpus: '0.5'
-          memory: '100MB'
+          memory: '150MB'
 
   api02:
     <<: *api
@@ -46,8 +46,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.1'
-          memory: '20MB'
+          cpus: '0.3'
+          memory: '50MB'
 
   traefik:
     image: traefik:v3.1
@@ -67,7 +67,7 @@ services:
       resources:
         limits:
           cpus: '0.5'
-          memory: '100MB'
+          memory: '85MB'
 
 volumes:
   rubygems6:
