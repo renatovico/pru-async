@@ -25,15 +25,16 @@ class PaymentJob
 
     # Skip default if circuit is open
     unless self.circuit_breaker.open?('default')
-      3.times do |attempt|
-      if self.try_processor('default', payload, timeout: 0.3)
-        store.save(correlation_id: correlation_id, processor: 'default', amount: amount, timestamp: requested_at)
-        puts "🐦 Payment #{correlation_id} processed by default (attempt #{attempt + 1})"
-        return
-      end
+      2.times do |attempt|
+        if self.try_processor('default', payload, timeout: 0.3)
+          store.save(correlation_id: correlation_id, processor: 'default', amount: amount, timestamp: requested_at)
+          puts "🐦 Payment #{correlation_id} processed by default (attempt #{attempt + 1})"
+          return
+        end
 
-      # Small non-blocking delay between retries
-      Async::Task.current.sleep(0.002 * (attempt + 1)) if attempt < 2
+        # Small non-blocking delay between retries
+        Async::Task.current.sleep(0.002 * (attempt + 1))
+
       end
     else
       puts "⚠️  Circuit open for default, skipping attempts"

@@ -8,7 +8,7 @@ class JobQueue
 
   def initialize
   # Bounded queue to avoid unbounded memory use; tune capacity as needed:
-  @queue = Async::LimitedQueue.new(256)
+  @queue = Async::LimitedQueue.new(512)
     @started = false
     @tasks = []
   end
