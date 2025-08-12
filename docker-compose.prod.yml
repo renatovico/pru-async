@@ -11,10 +11,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.4'
-          memory: '100MB'
+          cpus: '0.2'
+          memory: '85MB'
 
-  api02: 
+  api02:
     <<: *api
     container_name: api02
     hostname: api02
@@ -23,13 +23,13 @@ services:
     <<: *api
     container_name: worker
     hostname: worker
-    command: bundle exec sidekiq -r ./app/payment_job.rb -c 10
+    command: bundle exec sidekiq -r ./app/payment_job.rb -c 30
     depends_on:
       - redis
     deploy:
       resources:
         limits:
-          cpus: '0.4'
+          cpus: '0.5'
           memory: '100MB'
 
   redis:
@@ -43,11 +43,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.2'
-          memory: '40MB'
+          cpus: '0.3'
+          memory: '50MB'
 
   nginx:
-    image: nginx 
+    image: nginx
     container_name: nginx
     volumes:
       - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
@@ -63,8 +63,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.1'
-          memory: '10MB'
+          cpus: '0.3'
+          memory: '50MB'
 
 networks:
   payment-processor:

@@ -49,10 +49,12 @@ class PruApp
     correlation_id = data['correlationId']
     amount = data['amount']
 
-    PaymentJob.perform_async(correlation_id, amount, Time.now.iso8601(3))
+    PaymentJob.perform_now(correlation_id, amount, Time.now.iso8601(3))
     json(200, { message: 'enqueued' })
   rescue JSON::ParserError
     json(400, { error: 'Invalid JSON' })
+  rescue => e
+    json(500, { error: 'Internal Server Error', details: e.message })
   end
 
   def handle_payments_summary(request)
