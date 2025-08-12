@@ -9,11 +9,13 @@ require_relative 'circuit_breaker'
 class PaymentJob
 
   def self.circuit_breaker
-    @circuit_breaker ||= CircuitBreaker.new(threshold: 5, window_seconds: 1)
+    @circuit_breaker ||= CircuitBreaker.new(threshold: 3, window_seconds: 1)
   end
 
-  def self.perform_now(correlation_id, amount, requested_at)
+  def self.perform_now(correlation_id, amount, requested_at, retries: nil)
     return if RedisPool.with { |redis| redis.get("processed:#{correlation_id}") }
+
+    retries ||= 0
 
     payload = {
       correlationId: correlation_id,
@@ -49,7 +51,14 @@ class PaymentJob
       puts "⚠️  Circuit open for fallback, skipping attempt"
     end
 
-    raise "Processors both failed for #{correlation_id}"
+    Async::Task.current.sleep(retries + 1 ** 2)
+
+    if retries > 2
+      raise "Processors both failed for #{correlation_id} in #{retries} retries"
+    end
+
+    retries += 1
+    self.perform_now(correlation_id, amount, requested_at, retries: retries)
   end
 
   def self.try_processor(processor_name, payload, timeout: nil)
