@@ -33,6 +33,6 @@ class JobQueue
   def safe_call(job)
     job.call
   rescue => e
-  Log.exception(e, 'job_failed')
+    Log.exception(e, 'job_failed')
   end
 end

@@ -10,6 +10,8 @@ class Store
   end
 
   def save(correlation_id:, processor:, amount:, timestamp: Time.now)
+    return if @redis.call('GET', "processed:#{correlation_id}")
+
     payment_data = {
       processor: processor,
       correlationId: correlation_id,
@@ -17,12 +19,12 @@ class Store
       timestamp: timestamp
     }
 
-  timestamp_score = Time.parse(timestamp.to_s).to_f
-  # Use a simple transaction to ensure both updates happen together.
-  @redis.call('MULTI')
-  @redis.call('SET', "processed:#{correlation_id}", '1', 'EX', 3600)
-  @redis.call('ZADD', 'payments_log', timestamp_score, payment_data.to_json)
-  @redis.call('EXEC')
+    timestamp_score = Time.parse(timestamp.to_s).to_f
+    # Use a simple transaction to ensure both updates happen together.
+    @redis.transaction do |context|
+      context.call('SET', "processed:#{correlation_id}", '1', 'EX', 3600)
+      context.call('ZADD', 'payments_log', timestamp_score, payment_data.to_json)
+    end
   end
 
   # Summarize payments, optionally filtered by timestamp window
@@ -31,7 +33,7 @@ class Store
   end
 
   def purge_all
-  @redis.call('FLUSHDB')
+    @redis.call('FLUSHDB')
   end
 
   private

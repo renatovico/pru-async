@@ -7,14 +7,14 @@ require_relative 'store'
 require_relative 'circuit_breaker'
 
 class PaymentJob
-  def initialize(store:, redis_client:, circuit_breaker: CircuitBreaker.new(threshold: 5, window_seconds: 1))
+  def initialize(store:, redis_client:, circuit_breaker: CircuitBreaker.new(threshold: 50, window_seconds: 1))
     @store = store
     @redis = redis_client
     @circuit_breaker = circuit_breaker
   end
 
   def perform_now(correlation_id, amount, requested_at, retries: nil)
-  return if @redis.call('GET', "processed:#{correlation_id}")
+    return if @redis.call('GET', "processed:#{correlation_id}")
 
     retries ||= 0
 
@@ -27,7 +27,7 @@ class PaymentJob
     # Skip default if circuit is open
     unless @circuit_breaker.open?('default')
       2.times do |attempt|
-        if try_processor('default', payload, timeout: 0.2)
+        if try_processor('default', payload, correlation_id, timeout: 1)
           @store.save(correlation_id: correlation_id, processor: 'default', amount: amount, timestamp: requested_at)
           Log.debug('payment_processed', correlation_id: correlation_id, processor: 'default', attempt: attempt + 1)
           return
@@ -37,14 +37,14 @@ class PaymentJob
         Async::Task.current.sleep(0.001 * (attempt + 1))
       end
     else
-  Log.debug('circuit_open_skip', processor: 'default')
+      Log.warn('circuit_open_skip', processor: 'default')
     end
 
   # Try fallback processor if default failed (with aggressive timeout)
     if @circuit_breaker.open?('fallback')
-      Log.debug('circuit_open_skip', processor: 'fallback')
+      Log.warn('circuit_open_skip', processor: 'fallback')
     else
-      if try_processor('fallback', payload, timeout: 0.08)
+      if try_processor('fallback', payload, correlation_id, timeout: 1)
         @store.save(correlation_id: correlation_id, processor: 'fallback', amount: amount, timestamp: requested_at)
         Log.debug('payment_processed', correlation_id: correlation_id, processor: 'fallback')
         return
@@ -53,7 +53,7 @@ class PaymentJob
 
     Async::Task.current.sleep(retries + 1 ** 2)
 
-    if retries > 5
+    if retries > 10
       raise "Processors both failed for #{correlation_id} in #{retries} retries"
     end
 
@@ -61,33 +61,32 @@ class PaymentJob
     perform_now(correlation_id, amount, requested_at, retries: retries)
   end
 
-  def try_processor(processor_name, payload, timeout: nil)
-    # Fast-fail if circuit is open
-    if @circuit_breaker.open?(processor_name)
-      return false
-    end
-    url = "http://payment-processor-#{processor_name}:8080/payments"
-    headers = [['content-type', 'application/json']]
-    body = payload.to_json
+  def try_processor(processor_name, payload, correlation_id, timeout: nil)
+    Async do |task|
+      return true if @redis.call('GET', "processed:#{correlation_id}")
 
-    response = nil
-    begin
-      if timeout
-        Async::Task.current.with_timeout(timeout + 1) do
-          response = Async::HTTP::Internet.post(url, headers, body)
-        end
-      else
-        response = Async::HTTP::Internet.post(url, headers, body)
+      # Fast-fail if circuit is open
+      if @circuit_breaker.open?(processor_name)
+        return false
       end
-      ok = response.status >= 200 && response.status < 300
-      @circuit_breaker.record_failure(processor_name) unless ok
-      ok
-    ensure
-      response&.close
+      url = "http://payment-processor-#{processor_name}:8080/payments"
+      headers = [['content-type', 'application/json']]
+      body = payload.to_json
+
+      response = nil
+      Async::Task.current.with_timeout(timeout) do
+        response = Async::HTTP::Internet.post(url, headers, body)
+
+        ok = response.status >= 200 && response.status < 300
+        @circuit_breaker.record_failure(processor_name) unless ok
+        ok
+      ensure
+        response&.close
+      end
+    rescue => e
+      Log.debug(e.message, 'processor_error', processor: processor_name, correlation_id: correlation_id)
+      @circuit_breaker.record_failure(processor_name)
+      false
     end
-  rescue => e
-    Log.exception(e, 'processor_error', processor: processor_name, correlation_id: payload[:correlationId])
-    @circuit_breaker.record_failure(processor_name)
-    false
   end
 end

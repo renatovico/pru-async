@@ -92,7 +92,9 @@ end
 if __FILE__ == $0
   port = Integer(ENV.fetch('PORT', '3000'))
   Log.info('server_start', port: port)
-
+ job_queue = JobQueue.new(
+        concurrency: (ENV['QUEUE_CONCURRENCY'] || '1').to_i,
+      )
   Async do |task|
     # Single shared Redis client per process:
     redis_endpoint = if defined?(Async::Redis::Endpoint) && Async::Redis::Endpoint.respond_to?(:parse)
@@ -103,9 +105,7 @@ if __FILE__ == $0
     redis_client = Async::Redis::Client.new(redis_endpoint)
 
     store = Store.new(redis_client: redis_client)
-    job_queue = JobQueue.new(
-        concurrency: (ENV['QUEUE_CONCURRENCY'] || '1024').to_i,
-      )
+
     payment_job = PaymentJob.new(store: store, redis_client: redis_client)
 
 
@@ -119,7 +119,7 @@ if __FILE__ == $0
           Log.debug('request', method: request.method, path: request.path)
           app.call(request)
         rescue => e
-          Log.exception(e, 'request_log_error')
+          Log.exception(e.message, 'request_log_error')
           # ignore logging issues
         end
       end
