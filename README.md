@@ -1,17 +1,21 @@
-# 🐦 Pru
+# 🐦 Pru-ASYNC
 
 ```
- _______  _______          
+ _______  _______
 (  ____ )(  ____ )|\     /|
 | (    )|| (    )|| )   ( |
 | (____)|| (____)|| |   | |
 |  _____)|     __)| |   | |
 | (      | (\ (   | |   | |
 | )      | ) \ \__| (___) |
-|/       |/   \__/(_______)
+|/       |/   \__/(_______)/ASYNC
 ```
 
 Mais uma submissão para a [Rinha de Backend 2025](https://github.com/zanfranceschi/rinha-de-backend-2025), desta vez em Ruby.
+
+Fork do PRU DO https://github.com/leandronsp/pru do LeandroSP
+
+Resolvi testar as gem async para ver como performaria sem sidekiq
 
 ## Requisitos
 

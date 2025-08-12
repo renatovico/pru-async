@@ -62,10 +62,10 @@ rinha.official: ## Run official Rinha test with scoring
 	@./scripts/run-local-test.sh
 
 docker.build: ## Build the docker image
-	@docker build -t leandronsp/pru --target prod --platform linux/amd64 .
+	@docker build -t renatoelias/pru-async --target prod --platform linux/amd64 .
 
 docker.push: ## Push the docker image
-	@docker push leandronsp/pru
+	@docker push renatoelias/pru-async
 
 rinha.official.prod: ## Run official Rinha using the production image
 	@docker compose -f docker-compose.prod.yml down --remove-orphans
@@ -74,7 +74,7 @@ rinha.official.prod: ## Run official Rinha using the production image
 	# Build and push the image
 	@make docker.build
 	@make docker.push
-	@docker rmi leandronsp/pru
+	@docker rmi renatoelias/pru-async
 
 	@docker compose -f docker-compose.processor.yml up -d
 	@docker compose -f docker-compose.prod.yml up -d nginx

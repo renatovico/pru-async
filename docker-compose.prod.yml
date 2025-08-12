@@ -1,6 +1,6 @@
 services:
   api01: &api
-    image: leandronsp/pru
+    image: renatoelias/pru-async
     container_name: api01
     hostname: api01
     environment:
@@ -11,26 +11,13 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.2'
-          memory: '85MB'
+          cpus: '0.5'
+          memory: '125MB'
 
   api02:
     <<: *api
     container_name: api02
     hostname: api02
-
-  worker:
-    <<: *api
-    container_name: worker
-    hostname: worker
-    command: bundle exec sidekiq -r ./app/payment_job.rb -c 30
-    depends_on:
-      - redis
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: '100MB'
 
   redis:
     image: redis:7-alpine
@@ -43,8 +30,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.3'
-          memory: '50MB'
+         cpus: '0.2'
+         memory: '40MB'
 
   nginx:
     image: nginx
@@ -59,12 +46,11 @@ services:
       - redis
       - api01
       - api02
-      - worker
     deploy:
       resources:
         limits:
           cpus: '0.3'
-          memory: '50MB'
+          memory: '40MB'
 
 networks:
   payment-processor:
