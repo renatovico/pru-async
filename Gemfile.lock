@@ -19,6 +19,12 @@ GEM
       traces (~> 0.10)
     async-pool (0.11.0)
       async (>= 2.0)
+    async-redis (0.11.2)
+      async (~> 2.10)
+      async-pool (~> 0.2)
+      io-endpoint (~> 0.10)
+      io-stream (~> 0.4)
+      protocol-redis (~> 0.9)
     connection_pool (2.5.3)
     console (1.33.0)
       fiber-annotation
@@ -41,6 +47,7 @@ GEM
     protocol-http2 (0.22.1)
       protocol-hpack (~> 1.4)
       protocol-http (~> 0.47)
+    protocol-redis (0.9.0)
     rack (3.2.0)
     redis (5.4.1)
       redis-client (>= 0.22.0)
@@ -59,7 +66,9 @@ PLATFORMS
   ruby
 
 DEPENDENCIES
+  async
   async-http
+  async-redis
   connection_pool
   json
   redis

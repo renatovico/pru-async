@@ -5,7 +5,7 @@ services:
       target: base
     volumes:
       - .:/app
-      - rubygems2:/usr/local/bundle
+      - rubygems6:/usr/local/bundle
 
   api01: &api
     build:
@@ -17,7 +17,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
     volumes:
       - .:/app
-      - rubygems2:/usr/local/bundle
+      - rubygems6:/usr/local/bundle
     networks:
       - payment-processor
       - backend
@@ -67,7 +67,7 @@ services:
           memory: '40MB'
 
 volumes:
-  rubygems2:
+  rubygems6:
 networks:
   payment-processor:
     external: true

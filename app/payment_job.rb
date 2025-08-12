@@ -1,5 +1,3 @@
-require 'sidekiq'
-require 'redis'
 require 'json'
 require 'async'
 require 'async/http/internet/instance'
@@ -34,8 +32,8 @@ class PaymentJob
         return
       end
 
-      # Small delay between retries
-      sleep(0.002 * (attempt + 1)) if attempt < 2
+      # Small non-blocking delay between retries
+      Async::Task.current.sleep(0.002 * (attempt + 1)) if attempt < 2
       end
     else
       puts "⚠️  Circuit open for default, skipping attempts"
