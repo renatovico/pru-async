@@ -1,5 +1,6 @@
 require 'time'
 require 'json'
+require 'bigdecimal'
 
 require_relative 'redis_pool'
 
@@ -20,25 +21,13 @@ class Store
       redis.multi do
         redis.set("processed:#{correlation_id}", 1, ex: 3600)
         redis.zadd('payments_log', timestamp_score, payment_data.to_json)
-        redis.incr("totalRequests:#{processor}")
-        redis.incrbyfloat("totalAmount:#{processor}", amount)
       end
     end
   end
 
+  # Summarize payments, optionally filtered by timestamp window
   def summary(from: nil, to: nil)
-    if from || to
-      calculate_filtered_summary(from, to)
-    else
-      RedisPool.with do |redis|
-        %w[default fallback].each_with_object({}) do |type, hash|
-          hash[type] = {
-            totalRequests: redis.get("totalRequests:#{type}").to_i,
-            totalAmount: redis.get("totalAmount:#{type}").to_f #.round(2)
-          }
-        end
-      end
-    end
+    calculate_filtered_summary(from, to)
   end
 
   def purge_all
@@ -52,8 +41,8 @@ class Store
     to_score = to ? Time.parse(to).to_f : '+inf'
 
     summary = {
-      'default' => { totalRequests: 0, totalAmount: 0.0 },
-      'fallback' => { totalRequests: 0, totalAmount: 0.0 }
+      'default' => { totalRequests: 0, totalAmount: BigDecimal("0.00") },
+      'fallback' => { totalRequests: 0, totalAmount: BigDecimal("0.00") }
     }
 
     RedisPool.with do |redis|
@@ -66,14 +55,14 @@ class Store
 
         if summary[processor]
           summary[processor][:totalRequests] += 1
-          summary[processor][:totalAmount] += amount
+          summary[processor][:totalAmount] += BigDecimal(amount, 12)
         end
       end
     end
 
     # Round to 2 decimal places to avoid floating-point precision issues
     summary.each do |processor, data|
-      data[:totalAmount] = data[:totalAmount] #.round(2)
+      data[:totalAmount] = ("%.2f" % data[:totalAmount]).to_f
     end
 
     summary

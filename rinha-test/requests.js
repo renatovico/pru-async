@@ -38,6 +38,8 @@ const paymentProcessorHttp = {
 
 export async function setPPToken(service, token) {
 
+    console.log(token);
+
     const httpClient = paymentProcessorHttp[service];
     const params = { headers: { 'X-Rinha-Token': initialToken } };
 
