@@ -1,8 +1,8 @@
 require 'sidekiq'
 require 'redis'
 require 'json'
-require 'net/http'
-require 'timeout'
+require 'async'
+require 'async/http/internet/instance'
 
 require_relative 'store'
 require_relative 'redis_pool'
@@ -58,23 +58,25 @@ class PaymentJob
     if self.circuit_breaker.open?(processor_name)
       return false
     end
-    endpoint = "http://payment-processor-#{processor_name}:8080/payments"
-    uri = URI(endpoint)
-    http = Net::HTTP.new(uri.host, uri.port)
+    url = "http://payment-processor-#{processor_name}:8080/payments"
+    headers = [['content-type', 'application/json']]
+    body = payload.to_json
 
-    if timeout
-      http.open_timeout = timeout
-      http.read_timeout = timeout + 2 # Read timeout is longer to allow for processing
+    response = nil
+    begin
+      if timeout
+        Async::Task.current.with_timeout(timeout + 2) do
+          response = Async::HTTP::Internet.post(url, headers, body)
+        end
+      else
+        response = Async::HTTP::Internet.post(url, headers, body)
+      end
+      ok = response.status >= 200 && response.status < 300
+      self.circuit_breaker.record_failure(processor_name) unless ok
+      ok
+    ensure
+      response&.close
     end
-
-    request = Net::HTTP::Post.new(uri.path, 'Content-Type' => 'application/json')
-    request.body = payload.to_json
-    response = http.request(request)
-    ok = response.is_a?(Net::HTTPSuccess)
-    unless ok
-      self.circuit_breaker.record_failure(processor_name)
-    end
-    ok
   rescue => e
     puts "Error processing payment #{payload[:correlationId]} on #{processor_name}: #{e.message}"
     self.circuit_breaker.record_failure(processor_name)
