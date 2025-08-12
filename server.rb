@@ -47,7 +47,7 @@ class PruApp
     return json(400, { error: 'Bad Request' }) if body.nil? || body.empty?
 
     # Enqueue work into background workers (outside the HTTP request fiber).
-    enqueued = JobQueue.instance.enqueue_with_timeout(0.05) do
+    enqueued = JobQueue.instance.enqueue do
       begin
         data = JSON.parse(body)
         correlation_id = data['correlationId']
@@ -107,7 +107,7 @@ if __FILE__ == $0
   puts "🐦 Pru server starting on port #{port}..."
   Async do |task|
     # Start background workers once when reactor boots:
-    JobQueue.start_workers(count: 20, parent_task: task)
+    JobQueue.start_workers(count: 200, parent_task: task)
     server.run
   end
 end
