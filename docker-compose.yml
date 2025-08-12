@@ -28,7 +28,7 @@ services:
       resources:
         limits:
           cpus: '0.5'
-          memory: '150MB'
+          memory: '115MB'
 
   api02:
     <<: *api
@@ -46,8 +46,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.3'
-          memory: '50MB'
+          cpus: '0.2'
+          memory: '40MB'
 
   traefik:
     image: traefik:v3.1
@@ -56,8 +56,8 @@ services:
     ports:
       - 9999:9999
     volumes:
-      - ./config/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
-      - ./config/traefik/dynamic:/etc/traefik/dynamic:ro
+      - ./traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./http.yml:/etc/traefik/dynamic/http.yml:ro
     networks:
       - backend
     depends_on:
@@ -66,8 +66,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
-          memory: '85MB'
+          cpus: '0.3'
+          memory: '80MB'
 
 volumes:
   rubygems6:
