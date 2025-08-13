@@ -13,7 +13,7 @@ class PaymentJob
     @circuit_breaker = circuit_breaker
   end
 
-  def perform_now(correlation_id, amount, requested_at, retries: nil)
+  def perform_now(correlation_id, amount, requested_at)
     return if @redis.call('GET', "processed:#{correlation_id}")
 
     retries ||= 0
@@ -26,15 +26,12 @@ class PaymentJob
 
     # Skip default if circuit is open
     unless @circuit_breaker.open?('default')
-      2.times do |attempt|
-        if try_processor('default', payload, correlation_id, timeout: 0.5)
-          @store.save(correlation_id: correlation_id, processor: 'default', amount: amount, timestamp: requested_at)
-          Log.debug('payment_processed', correlation_id: correlation_id, processor: 'default', attempt: attempt + 1)
-          return
-        end
-
-        # Small non-blocking delay between retries
-        Async::Task.current.sleep(0.001 * (attempt + 1))
+      if Sync do
+        try_processor('default', payload, correlation_id, timeout: 0.5)
+      end
+        @store.save(correlation_id: correlation_id, processor: 'default', amount: amount, timestamp: requested_at)
+        Log.debug('payment_processed', correlation_id: correlation_id, processor: 'default', attempt: attempt + 1)
+        return true
       end
     else
       Log.debug('circuit_open_skip', processor: 'default')
@@ -44,25 +41,25 @@ class PaymentJob
     if @circuit_breaker.open?('fallback')
       Log.debug('circuit_open_skip', processor: 'fallback')
     else
-      if try_processor('fallback', payload, correlation_id, timeout: 2)
+      if Sync do
+        try_processor('fallback', payload, correlation_id, timeout: 1)
+      end
         @store.save(correlation_id: correlation_id, processor: 'fallback', amount: amount, timestamp: requested_at)
         Log.debug('payment_processed', correlation_id: correlation_id, processor: 'fallback')
-        return
+        return true
       end
     end
 
-    Async::Task.current.sleep(retries + 1 ** 2)
+    Log.debug('payment_failed', correlation_id: correlation_id)
+    @store.set_status(correlation_id: correlation_id, status: 'failed', fields: { reason: 'both_processors_failed' })
+    return false
 
-    if retries > 10
-      raise "Processors both failed for #{correlation_id} in #{retries} retries"
-    end
-
-    retries += 1
-    perform_now(correlation_id, amount, requested_at, retries: retries)
   end
 
   def try_processor(processor_name, payload, correlation_id, timeout: nil)
     Sync do
+      Log.debug('try_processor', processor: processor_name, correlation_id: correlation_id)
+
       return true if @redis.call('GET', "processed:#{correlation_id}")
 
       # Fast-fail if circuit is open

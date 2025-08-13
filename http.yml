@@ -6,8 +6,8 @@ http:
       service: api-service
       entryPoints:
         - web
-      # middlewares:
-      #   - api-retry
+      middlewares:
+        - api-retry
 
   services:
     api-service:
@@ -25,14 +25,16 @@ http:
   serversTransports:
     fast-transport:
       forwardingTimeouts:
-        dialTimeout: 200ms
-        responseHeaderTimeout: 1s
-        idleConnTimeout: 20s
-      maxIdleConnsPerHost: 256
+        dialTimeout: "30s"
+        responseHeaderTimeout: "10s"
+        idleConnTimeout: "60s"
+        readIdleTimeout: "5s"
+        pingTimeout: "15s"
+      maxIdleConnsPerHost: 128
       insecureSkipVerify: true
 
-  # middlewares:
-  #   api-retry:
-  #     retry:
-  #       attempts: 0
-  #       initialInterval: 100ms
+  middlewares:
+    api-retry:
+      retry:
+        attempts: 1
+        initialInterval: 100ms
