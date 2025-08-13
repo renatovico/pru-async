@@ -26,7 +26,7 @@ http:
     fast-transport:
       forwardingTimeouts:
         dialTimeout: "30s"
-        responseHeaderTimeout: "10s"
+        responseHeaderTimeout: "90s"
         idleConnTimeout: "60s"
         readIdleTimeout: "5s"
         pingTimeout: "15s"

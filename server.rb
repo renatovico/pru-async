@@ -16,27 +16,42 @@ class PruApp
     @store = store
     @job_queue = job_queue
     @payment_job = payment_job
+    @route_status_counts = Hash.new { |h, k| h[k] = Hash.new(0) }
+    @total_requests = 0
+  @job_status = { 'success' => 0, 'error' => 0, 'in_process' => 0 }
   end
 
   # Handle an incoming Protocol::HTTP::Request and return Protocol::HTTP::Response
   def call(request)
     method = request.method
     path = URI.parse(request.path || '/').path
-
-    case [method, path]
+    # Route and obtain response
+    response = case [method, path]
     when ['POST', '/payments']
       handle_payments(request)
-      when ['GET', '/payment-status']
-        handle_payment_status(request)
+    when ['GET', '/payment-status']
+      handle_payment_status(request)
     when ['GET', '/payments-summary']
       handle_payments_summary(request)
     when ['GET', '/health']
-      json(200, { ok: true })
+      handle_health
     when ['POST', '/purge-payments']
       handle_purge_payments(request)
     else
       json(404, { error: 'Not Found' })
     end
+
+    # Track counts per route and status code after we have the response
+    begin
+      status = response.status
+      @route_status_counts[path][status] += 1
+      @total_requests += 1
+    rescue => e
+      # If for any reason status can't be read, ignore metrics update
+      Log.warn('metrics_update_failed', error: e.message)
+    end
+
+    response
   end
 
   private
@@ -53,44 +68,62 @@ class PruApp
     body = request.read
     return json(400, { error: 'Bad Request' }) if body.nil? || body.empty?
 
-  # Enqueue work into background workers (outside the HTTP request fiber).
-      data = JSON.parse(body)
-      correlation_id = data['correlationId']
-      amount = data['amount']
-      return json(400, { error: 'Missing correlationId' }) if correlation_id.nil? || correlation_id.to_s.empty?
+# Enqueue work into background workers (outside the HTTP request fiber).
+    data = JSON.parse(body)
+    correlation_id = data['correlationId']
+    amount = data['amount']
+    return json(400, { error: 'Missing correlationId' }) if correlation_id.nil? || correlation_id.to_s.empty?
 
-      requested_at = Time.now.iso8601(3)
-      accepted = @store.begin_payment(correlation_id: correlation_id, amount: amount, requested_at: requested_at)
-      unless accepted
-        Log.warn('duplicate_payment_rejected', correlation_id: correlation_id)
-        return json(409, { error: 'Duplicate correlationId', correlationId: correlation_id })
-      end
+    if @payment_job.circuit_closed?
+      Log.warn('circuit_closed', correlation_id: correlation_id)
+      return json(503, { error: 'Service Unavailable' })
+    end
 
-      @store.set_status(correlation_id: correlation_id, status: 'processing')
 
-      # Enqueue work into background workers (outside the HTTP request fiber).
-      result = @job_queue.enqueue do
-        begin
-          @payment_job.perform_now(correlation_id, amount, requested_at)
-        rescue => e
-          Log.exception(e, 'payment_job_failed', correlation_id: correlation_id)
+    requested_at = Time.now.iso8601(3)
+    accepted = @store.begin_payment(correlation_id: correlation_id, amount: amount, requested_at: requested_at)
+    unless accepted
+      Log.warn('duplicate_payment_rejected', correlation_id: correlation_id)
+      return json(409, { error: 'Duplicate correlationId', correlationId: correlation_id })
+    end
+
+    @store.set_status(correlation_id: correlation_id, status: 'processing')
+
+    # Enqueue work into background workers (outside the HTTP request fiber).
+    result = @job_queue.enqueue do
+      begin
+        @job_status['in_process'] += 1
+        ok = @payment_job.perform_now(correlation_id, amount, requested_at)
+        if ok
+          @job_status['success'] += 1
+        else
+          @job_status['error'] += 1
         end
+        true
+      rescue => e
+        Log.exception(e, 'payment_job_failed', correlation_id: correlation_id)
+        @job_status['error'] += 1
+        false
+      ensure
+        @job_status['in_process'] -= 1
+        @job_status['in_process'] = 0 if @job_status['in_process'] < 0
       end
-      # return enq ? json(202, { message: 'enqueued', correlationId: correlation_id }) : json(502, { error: 'Queue in overflow' })
+    end
+    # return enq ? json(202, { message: 'enqueued', correlationId: correlation_id }) : json(502, { error: 'Queue in overflow' })
 
 
-      # result = Sync do
-      #   @payment_job.perform_now(correlation_id, amount, requested_at)
-      # end
+    # result = Sync do
+    #   @payment_job.perform_now(correlation_id, amount, requested_at)
+    # end
 
-      # result = true
+    # result = true
 
-      if result
-        json(201, { message: 'Payment created', correlationId: correlation_id })
-      else
-        @store.set_status(correlation_id: correlation_id, status: 'failed')
-        json(501, { error: 'Payment enqueue failed', correlationId: correlation_id })
-      end
+    if result
+      json(201, { message: 'Payment created', correlationId: correlation_id })
+    else
+      @store.set_status(correlation_id: correlation_id, status: 'failed')
+      json(501, { error: 'Payment enqueue failed', correlationId: correlation_id })
+    end
 
   rescue JSON::ParserError
     json(400, { error: 'Invalid JSON' })
@@ -114,6 +147,19 @@ class PruApp
   def handle_purge_payments(_request)
     @store.purge_all
     json(200, { message: 'purged' })
+  end
+
+  def handle_health
+    # Deep copy and normalize status code keys to strings for JSON stability
+    routes = {}
+    @route_status_counts.each do |route, statuses|
+      routes[route] = {}
+      statuses.each do |code, count|
+        routes[route][code.to_s] = count
+      end
+    end
+
+  json(200, { ok: true, totalRequests: @total_requests, routes: routes, job_status: @job_status.dup })
   end
 
   def handle_payment_status(request)
@@ -165,21 +211,11 @@ if __FILE__ == $0
       end
 
     Async(transient: true) do |task|
-      begin
         server.run
-      ensure
-        redis_client.close
-      end
     end
 
-
-
     Async do |task|
-      begin
-        job_queue.start
-      ensure
-        job_queue.close
-      end
+      job_queue.start
     end
   end
 end
