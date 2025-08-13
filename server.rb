@@ -69,25 +69,27 @@ class PruApp
       @store.set_status(correlation_id: correlation_id, status: 'processing')
 
       # Enqueue work into background workers (outside the HTTP request fiber).
-      # enq = @job_queue.enqueue do
-      #   begin
-      #     @payment_job.perform_now(correlation_id, amount, requested_at)
-      #   rescue => e
-      #     Log.exception(e, 'payment_job_failed', correlation_id: correlation_id)
-      #     @store.set_status(correlation_id: correlation_id, status: 'failed', fields: { reason: 'exception' })
-      #   end
-      # end
+      result = @job_queue.enqueue do
+        begin
+          @payment_job.perform_now(correlation_id, amount, requested_at)
+        rescue => e
+          Log.exception(e, 'payment_job_failed', correlation_id: correlation_id)
+        end
+      end
       # return enq ? json(202, { message: 'enqueued', correlationId: correlation_id }) : json(502, { error: 'Queue in overflow' })
 
 
-      result = Sync do
-        @payment_job.perform_now(correlation_id, amount, requested_at)
-      end
+      # result = Sync do
+      #   @payment_job.perform_now(correlation_id, amount, requested_at)
+      # end
+
+      # result = true
 
       if result
-        json(200, { message: 'processed', correlationId: correlation_id })
+        json(201, { message: 'Payment created', correlationId: correlation_id })
       else
-        json(501, { error: 'Payment processing failed', correlationId: correlation_id })
+        @store.set_status(correlation_id: correlation_id, status: 'failed')
+        json(501, { error: 'Payment enqueue failed', correlationId: correlation_id })
       end
 
   rescue JSON::ParserError
@@ -144,7 +146,7 @@ if __FILE__ == $0
       payment_job = PaymentJob.new(store: store, redis_client: redis_client)
 
       job_queue = JobQueue.new(
-        concurrency: (ENV['QUEUE_CONCURRENCY'] || '5192').to_i,
+        concurrency: (ENV['QUEUE_CONCURRENCY'] || '128').to_i,
       )
 
       # Start background workers once when reactor boots:
@@ -157,7 +159,7 @@ if __FILE__ == $0
           Log.debug('request', method: request.method, path: request.path)
           app.call(request)
         rescue => e
-          Log.exception(e, 'request_log_error')
+          Log.warn('request_failed', method: request.method, path: request.path, error: e.message, backtrace: e.backtrace)
           # ignore logging issues
         end
       end

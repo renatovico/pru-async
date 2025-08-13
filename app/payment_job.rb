@@ -30,7 +30,7 @@ class PaymentJob
         try_processor('default', payload, correlation_id, timeout: 0.5)
       end
         @store.save(correlation_id: correlation_id, processor: 'default', amount: amount, timestamp: requested_at)
-        Log.debug('payment_processed', correlation_id: correlation_id, processor: 'default', attempt: attempt + 1)
+        Log.debug('payment_processed', correlation_id: correlation_id, processor: 'default')
         return true
       end
     else
@@ -57,38 +57,36 @@ class PaymentJob
   end
 
   def try_processor(processor_name, payload, correlation_id, timeout: nil)
-    Sync do
-      Log.debug('try_processor', processor: processor_name, correlation_id: correlation_id)
+    Log.debug('try_processor', processor: processor_name, correlation_id: correlation_id)
 
-      return true if @redis.call('GET', "processed:#{correlation_id}")
+    return true if @redis.call('GET', "processed:#{correlation_id}")
 
-      # Fast-fail if circuit is open
-      if @circuit_breaker.open?(processor_name)
-        return false
-      end
-
-      url = "http://payment-processor-#{processor_name}:8080/payments"
-      headers = [['content-type', 'application/json']]
-      body = payload.to_json
-
-      response = nil
-      Async::Task.current.with_timeout(timeout) do
-        response = Async::HTTP::Internet.post(url, headers, body)
-
-        ok = response.status >= 200 && response.status < 300
-        @circuit_breaker.record_failure(processor_name) unless ok
-        ok
-      ensure
-        begin
-          response&.close
-        rescue
-          # ignore if cannot close
-        end
-      end
-    rescue => e
-      Log.debug(e, kind: 'processor_error', processor: processor_name, correlation_id: correlation_id)
-      @circuit_breaker.record_failure(processor_name)
-      false
+    # Fast-fail if circuit is open
+    if @circuit_breaker.open?(processor_name)
+      return false
     end
+
+    url = "http://payment-processor-#{processor_name}:8080/payments"
+    headers = [['content-type', 'application/json']]
+    body = payload.to_json
+
+    response = nil
+    Async::Task.current.with_timeout(timeout) do
+      response = Async::HTTP::Internet.post(url, headers, body)
+
+      ok = response.status >= 200 && response.status < 300
+      @circuit_breaker.record_failure(processor_name) unless ok
+      ok
+    ensure
+      begin
+        response&.close
+      rescue
+        # ignore if cannot close
+      end
+    end
+  rescue => e
+    Log.debug(e, kind: 'processor_error', processor: processor_name, correlation_id: correlation_id)
+    @circuit_breaker.record_failure(processor_name)
+    false
   end
 end

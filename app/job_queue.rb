@@ -4,8 +4,8 @@ require 'async/queue'
 require_relative 'logger'
 
 class JobQueue
-  def initialize(concurrency: 512, buffer: 2048)
-    @queue = Async::Queue.new()
+  def initialize(concurrency: 128)
+    @queue = Async::LimitedQueue.new(concurrency)
   end
 
   # Start worker tasks that consume from the queue.

@@ -59,9 +59,9 @@ class Store
 
     if status == 'failed'
       if context
-        context.call('HDEL', key)
+        context.call('HDEL', key, 'status', 'updatedAt')
       else
-        @redis.call('HDEL', key)
+        @redis.call('HDEL', key, 'status', 'updatedAt')
       end
       return
     end
