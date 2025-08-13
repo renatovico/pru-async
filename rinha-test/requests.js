@@ -98,6 +98,7 @@ export async function getPPPaymentsSummary(service, from, to) {
     const response = await httpClient.asyncGet(`/admin/payments-summary?from=${from}&to=${to}`);
 
     if (response.status == 200) {
+        console.info(`Resposta de '/admin/payments-summary?from=${from}&to=${to}' para ${service} (HTTP ${response.status})`);
         return JSON.parse(response.body);
     }
 
@@ -125,6 +126,7 @@ export async function getBackendPaymentsSummary(from, to) {
     const response = await backendHttp.asyncGet(`/payments-summary?from=${from}&to=${to}`);
 
     if (response.status == 200) {
+        console.info(`Resposta de '/payments-summary?from=${from}&to=${to}' para o backend (HTTP ${response.status})`);
         return JSON.parse(response.body);
     }
 
