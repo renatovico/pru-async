@@ -54,7 +54,7 @@ class PaymentJob
       end
     end
 
-    if retries > 3
+    if retries > 5
       Log.debug('payment_failed', correlation_id: correlation_id)
       @store.set_status(correlation_id: correlation_id, status: 'failed', fields: { reason: 'both_processors_failed' })
       return false

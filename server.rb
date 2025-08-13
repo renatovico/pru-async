@@ -109,14 +109,6 @@ class PruApp
         @job_status['in_process'] = 0 if @job_status['in_process'] < 0
       end
     end
-    # return enq ? json(202, { message: 'enqueued', correlationId: correlation_id }) : json(502, { error: 'Queue in overflow' })
-
-
-    # result = Sync do
-    #   @payment_job.perform_now(correlation_id, amount, requested_at)
-    # end
-
-    # result = true
 
     if result
       json(201, { message: 'Payment created', correlationId: correlation_id })
