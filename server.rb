@@ -10,6 +10,7 @@ require 'async/redis'
 require_relative 'app/store'
 require_relative 'app/payment_job'
 require_relative 'app/job_queue'
+require_relative 'app/health_monitor'
 
 class PruApp
   def initialize(store:, job_queue:, payment_job:)
@@ -74,10 +75,10 @@ class PruApp
     amount = data['amount']
     return json(400, { error: 'Missing correlationId' }) if correlation_id.nil? || correlation_id.to_s.empty?
 
-    if @payment_job.circuit_closed?
-      Log.warn('circuit_closed', correlation_id: correlation_id)
-      return json(503, { error: 'Service Unavailable' })
-    end
+    # if @payment_job.circuit_closed?
+    #   Log.debug('circuit_closed', correlation_id: correlation_id)
+    #   return json(503, { error: 'Service Unavailable' })
+    # end
 
 
     requested_at = Time.now.iso8601(3)
@@ -130,10 +131,35 @@ class PruApp
     from_param = params['from']
     to_param = params['to']
 
-  Log.debug('payments_summary_params', from: from_param, to: to_param)
+    Log.debug('payments_summary_params', from: from_param, to: to_param)
 
-    summary = @store.summary(from: from_param, to: to_param)
-    json(200, summary)
+    # Pause the queue and wait for all in-flight jobs to finish before summarizing.
+    begin
+      @job_queue.pause! if @job_queue.respond_to?(:pause!)
+
+      # Wait until inflight == 0
+      if @job_queue.respond_to?(:inflight)
+        # Optional max wait via ENV to prevent indefinite block; default is no timeout.
+        deadline = nil
+        max_wait = (ENV['SUMMARY_MAX_WAIT'] || '0.3').to_f
+        deadline = Time.now.to_f + max_wait if max_wait > 0
+
+        loop do
+          current = @job_queue.inflight
+          break if current <= 0
+          if deadline && Time.now.to_f >= deadline
+            Log.warn('payments_summary_drain_timeout', inflight: current)
+            break
+          end
+          Async::Task.current.sleep(0.01)
+        end
+      end
+
+      summary = @store.summary(from: from_param, to: to_param)
+      json(200, summary)
+    ensure
+      @job_queue.resume! if @job_queue.respond_to?(:resume!)
+    end
   end
 
   def handle_purge_payments(_request)
@@ -151,7 +177,18 @@ class PruApp
       end
     end
 
-  json(200, { ok: true, totalRequests: @total_requests, routes: routes, job_status: @job_status.dup })
+  queue_state = {}
+  begin
+    queue_state = {
+      'paused' => (@job_queue.respond_to?(:paused?) ? @job_queue.paused? : false),
+      'inflight' => (@job_queue.respond_to?(:inflight) ? @job_queue.inflight : 0),
+      'total' => @job_queue.queue.size
+    }
+  rescue
+    queue_state = { 'paused' => false, 'inflight' => 0 }
+  end
+
+  json(200, { ok: true, totalRequests: @total_requests, routes: routes, job_status: @job_status.dup, queue: queue_state })
   end
 
   def handle_payment_status(request)
@@ -181,10 +218,12 @@ if __FILE__ == $0
 
       store = Store.new(redis_client: redis_client)
 
-      payment_job = PaymentJob.new(store: store, redis_client: redis_client)
+      health_monitor = HealthMonitor.new(redis_client: redis_client)
+      payment_job = PaymentJob.new(store: store, redis_client: redis_client, health_monitor: health_monitor)
 
       job_queue = JobQueue.new(
         concurrency: (ENV['QUEUE_CONCURRENCY'] || '128').to_i,
+        redis_client: redis_client,
       )
 
       # Start background workers once when reactor boots:
@@ -208,6 +247,11 @@ if __FILE__ == $0
 
     Async do |task|
       job_queue.start
+    end
+
+    # Start health monitor background polling
+    Async do
+      health_monitor.start
     end
   end
 end
