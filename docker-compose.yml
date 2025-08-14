@@ -28,7 +28,7 @@ services:
       resources:
         limits:
           cpus: '0.275'
-          memory: '57MB'
+          memory: '52.5MB'
 
   api02:
     <<: *api
@@ -79,7 +79,7 @@ services:
       resources:
         limits:
           cpus: '0.2'
-          memory: '100MB'
+          memory: '120MB'
 
 volumes:
   rubygems6:
