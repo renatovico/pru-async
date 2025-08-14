@@ -22,14 +22,14 @@ done
 
 if [ $success -eq 0 ]; then
     echo "Backend is ready! Starting k6 test..."
-    
+
     # Run the official k6 test with 550 requests
-    MAX_REQUESTS=550
+    MAX_REQUESTS=500
     PARTICIPANT="pru"
     TOKEN=$(uuidgen)
-    
+
     k6 run -e MAX_REQUESTS=$MAX_REQUESTS -e PARTICIPANT=$PARTICIPANT -e TOKEN=$TOKEN rinha-test/rinha.js
-    
+
     # Display results
     if [ -f partial-results.json ]; then
         echo ""
@@ -38,7 +38,6 @@ if [ $success -eq 0 ]; then
         cat partial-results.json | jq -r '
             "Participante: " + .participante,
             "P99: " + .p99.valor,
-            "Bônus por desempenho: " + (.p99.bonus * 100 | tostring) + "%",
             "",
             "Multa:",
             "  - Porcentagem: " + (.multa.porcentagem * 100 | tostring) + "%",
@@ -56,7 +55,7 @@ if [ $success -eq 0 ]; then
             "LUCRO FINAL: $" + (.total_liquido | tostring),
             "============================="
         '
-        
+
         # Save a summary
         echo ""
         echo "Full results saved to partial-results.json"

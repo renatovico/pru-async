@@ -333,12 +333,17 @@ export function handleSummary(data) {
     stdout: textSummary(data),
   };
 
-  const participant = __ENV.PARTICIPANT;
-  let summaryJsonFileName = `../participantes/${participant}/partial-results.json`
+  console.log(custom_data);
 
-  if (participant == undefined) {
-    summaryJsonFileName = `./partial-results.json`
-  }
+  const participant = __ENV.PARTICIPANT;
+
+  let summaryJsonFileName = `partial-results.json`  // Always save locally
+
+  // let summaryJsonFileName = `../participantes/${participant}/partial-results.json`
+
+  // if (participant == undefined) {
+  //   summaryJsonFileName = `./partial-results.json`
+  // }
 
   result[summaryJsonFileName] = JSON.stringify(custom_data, null, 2);
 

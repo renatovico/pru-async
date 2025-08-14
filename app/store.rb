@@ -9,23 +9,15 @@ class Store
     @redis = redis_client
   end
 
-  def save(correlation_id:, processor:, amount:, timestamp: Time.now)
-    return if @redis.call('GET', "processed:#{correlation_id}")
+  def save(correlation_id:, processor:, amount:, timestamp: )
+    # return if @redis.call('GET', "processed:#{correlation_id}")
 
-    payment_data = {
-      processor: processor,
-      correlationId: correlation_id,
-      amount: amount,
-      timestamp: timestamp
-    }
-
-    timestamp_score = Time.parse(timestamp.to_s).to_f
     # Use a simple transaction to ensure both updates happen together.
-    @redis.transaction do |context|
-      context.call('SET', "processed:#{correlation_id}", '1', 'EX', 3600)
-      context.call('ZADD', 'payments_log', timestamp_score, payment_data.to_json)
-      set_status(correlation_id: correlation_id, status: 'done', fields: { processor: processor }, context: context)
-    end
+    # Store only the amount as the member in a sorted set keyed by timestamp score for fast range queries.
+    ts = Time.parse(timestamp).to_f
+    # Log.info('payment_saved', correlation_id: correlation_id, processor: processor, amount: amount, timestamp: timestamp)
+
+    @redis.zadd("payments_log_#{processor}", ts, {a: amount.to_f.to_s, c: correlation_id}.to_json)
   end
 
   # Summarize payments, optionally filtered by timestamp window
@@ -39,53 +31,18 @@ class Store
 
   # Create a payment status if not already started.
   # Returns true if accepted, false if duplicate.
-  def begin_payment(correlation_id:, amount:, requested_at:, ttl: 3600)
+  def begin_payment(correlation_id:, ttl: 3600)
     # Use a simple NX lock to deduplicate starts.
     started_key = "payment_started:#{correlation_id}"
     set_res = @redis.call('SET', started_key, '1', 'NX', 'EX', ttl)
     return false unless set_res # nil when already exists
 
-    key = status_key(correlation_id)
-    @redis.transaction do |context|
-      context.call('HMSET', key, 'status', 'enqueued', 'requestedAt', requested_at.to_s, 'amount', amount.to_s)
-      context.call('EXPIRE', key, ttl)
-    end
     true
   end
 
-  # Update status hash for a correlation id.
-  def set_status(correlation_id:, status:, fields: {}, context: nil)
-    key = status_key(correlation_id)
-
-    if status == 'failed'
-      if context
-        context.call('HDEL', key, 'status', 'updatedAt')
-      else
-        @redis.call('HDEL', key, 'status', 'updatedAt')
-      end
-      return
-    end
-
-    now = Time.now.iso8601(3)
-    args = ['status', status, 'updatedAt', now]
-    fields.each { |k, v| args << k.to_s << v.to_s }
-    if context
-      context.call('HMSET', key, *args)
-    else
-      @redis.call('HMSET', key, *args)
-    end
-  end
-
-  # Fetch status as a string-keyed hash.
-  def get_status(correlation_id)
-    key = status_key(correlation_id)
-    flat = @redis.call('HGETALL', key) || []
-    return {} if flat.empty?
-    Hash[*flat]
-  end
-
-  def status_key(correlation_id)
-    "payment_status:#{correlation_id}"
+  def remove_payment(correlation_id:)
+    key = "payment_status:#{correlation_id}"
+    @redis.call('DEL', key)
   end
 
   private
@@ -99,17 +56,19 @@ class Store
       'fallback' => { totalRequests: 0, totalAmount: BigDecimal("0.00") }
     }
 
-    payments = @redis.call('ZRANGEBYSCORE', 'payments_log', from_score, to_score)
+    payments_default = @redis.call('ZRANGEBYSCORE', 'payments_log_default', from_score, to_score)
+    payments_fallback = @redis.call('ZRANGEBYSCORE', 'payments_log_fallback', from_score, to_score)
 
-    payments.each do |payment_json|
-      payment = JSON.parse(payment_json)
-      processor = payment['processor']
-      amount = payment['amount'].to_f
+    summary['default'][:totalRequests] += payments_default&.size || 0
+    payments_default&.each do |data|
+      amount_str = JSON.parse(data)['a']
+      summary['default'][:totalAmount] += BigDecimal(amount_str, 12)
+    end
 
-      if summary[processor]
-        summary[processor][:totalRequests] += 1
-        summary[processor][:totalAmount] += BigDecimal(amount, 12)
-      end
+    summary['fallback'][:totalRequests] += payments_fallback&.size || 0
+    payments_fallback&.each do |data|
+      amount_str = JSON.parse(data)['a']
+      summary['fallback'][:totalAmount] += BigDecimal(amount_str, 12)
     end
 
     # Round to 2 decimal places to avoid floating-point precision issues

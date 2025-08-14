@@ -1,6 +1,7 @@
 require 'json'
 require 'async'
-require 'async/http/internet/instance'
+require 'net/http'
+require 'uri'
 require_relative 'logger'
 
 require_relative 'store'
@@ -21,12 +22,16 @@ class PaymentJob
     default_open && fallback_open
   end
 
-  def perform_now(correlation_id, amount, requested_at, retries: nil)
-    return if @redis.call('GET', "processed:#{correlation_id}")
-
+  def perform_now(payload, retries: nil)
     retries ||= 0
 
-    payload = {
+    correlation_id = payload['correlationId']
+    amount = payload['amount']
+
+    to = @health.suggested_timeout('default', default: 1.0)
+    requested_at = Time.now.iso8601(3)
+
+    payload_job = {
       correlationId: correlation_id,
       amount: amount,
       requestedAt: requested_at
@@ -34,70 +39,50 @@ class PaymentJob
 
     # Try default processor first if allowed
     unless (failing?('default'))
-      processed = Sync do
-        to = @health.suggested_timeout('default', default: 1.0)
-        try_processor('default', payload, correlation_id, timeout: to)
-      end
-      if processed
+      result = try_processor('default', payload_job, correlation_id, timeout: to)
+      if result
         @store.save(correlation_id: correlation_id, processor: 'default', amount: amount, timestamp: requested_at)
-        Log.debug('payment_processed', correlation_id: correlation_id, processor: 'default')
         return true
       end
-    else
-      Log.debug('circuit_open_skip', processor: 'default')
     end
+
+    fallback_to = @health.suggested_timeout('fallback', default: 1.0)
 
     # Try fallback processor if default failed
     unless (failing?('fallback'))
-      processed = Sync do
-        to = @health.suggested_timeout('fallback', default: 1.0)
-        try_processor('fallback', payload, correlation_id, timeout: to)
-      end
-      if processed
+      result = try_processor('fallback', payload_job, correlation_id, timeout: fallback_to)
+      if result
         @store.save(correlation_id: correlation_id, processor: 'fallback', amount: amount, timestamp: requested_at)
-        Log.debug('payment_processed', correlation_id: correlation_id, processor: 'fallback')
         return true
       end
-    else
-      Log.debug('circuit_open_skip', processor: 'fallback')
     end
 
-    if retries > 2
-      Log.debug('payment_failed', correlation_id: correlation_id)
-      @store.set_status(correlation_id: correlation_id, status: 'failed', fields: { reason: 'both_processors_failed' })
-      return false
-    end
-
-    # Retry logic if both processors failed
-    Async::Task.current.sleep(retries + 0.05)
-    self.perform_now(correlation_id, amount, requested_at, retries: retries.to_i + 1)
-
+    return false
   end
 
   def try_processor(processor_name, payload, correlation_id, timeout: nil)
-    Sync do
-      Log.debug('try_processor', processor: processor_name, correlation_id: correlation_id)
+    # Log.debug('try_processor', processor: processor_name, correlation_id: correlation_id, timeout: timeout)
 
-      url = "http://payment-processor-#{processor_name}:8080/payments"
-      headers = [['content-type', 'application/json']]
-      body = payload.to_json
+    endpoint = "http://payment-processor-#{processor_name}:8080/payments"
+    uri = URI(endpoint)
+    http = Net::HTTP.new(uri.host, uri.port)
 
-      Async::Task.current.with_timeout(timeout) do
-        response = Async::HTTP::Internet.post(url, headers, body)
-
-        ok = response.status >= 200 && response.status < 300
-        ok
-      ensure
-        begin
-          response&.close
-        rescue
-          # ignore if cannot close
-        end
+    if timeout
+      if timeout > 2
+        timeout = 2
       end
-    rescue => e
-      Log.debug(e, kind: 'processor_error', processor: processor_name, correlation_id: correlation_id)
-      false
+
+      http.open_timeout = timeout
+      http.read_timeout = timeout + 0.5
     end
+
+    request = Net::HTTP::Post.new(uri.path, 'Content-Type' => 'application/json')
+    request.body = payload.to_json
+    response = http.request(request)
+    response.is_a?(Net::HTTPSuccess)
+  rescue => e
+    # Log.debug(e, kind: 'processor_error', processor: processor_name, correlation_id: correlation_id)
+    false
   end
 
   private

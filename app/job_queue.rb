@@ -2,38 +2,70 @@ require 'async'
 require 'async/semaphore'
 require 'async/queue'
 require_relative 'logger'
+require_relative 'payment_job'
 
 class JobQueue
   PAUSE_KEY = 'job_queue:paused'.freeze
   INFLIGHT_KEY = 'job_queue:inflight'.freeze
 
-  def initialize(concurrency: 10, redis_client: nil)
+  def initialize(concurrency: 10, redis_client: nil, store: nil, health_monitor: nil)
     @queue = Async::Queue.new
     @redis = redis_client
     @concurrency = concurrency
+    @store = store
+    @payment_job = PaymentJob.new(store: store, redis_client: redis_client, health_monitor: health_monitor)
+    @inflight = 0
+    @done = 0
+    @errors = 0
+  end
+
+  def inflight
+    @inflight
+  end
+
+  def done
+    @done
+  end
+
+  def errors
+    @errors
   end
 
   # Start worker tasks that consume from the queue.
   def start()
     Log.info('job_queue_start')
-
     # Process items from the queue:
     idler = Async::Semaphore.new(@concurrency)
 
     while (job = @queue.pop)
-      # If paused, wait until resumed before scheduling the job.
-      while paused?
-        Async::Task.current.sleep(0.05)
+      Log.debug('job_started', job_id: job[:correlation_id])
+      # If paused, wait until resumed before scheduling the job
+
+      if job['retries'] > 30
+        Log.warn('job_failed_permanently', job_id: job[:correlation_id], retries: job['retries'])
+        @store.remove_payment(correlation_id: job[:correlation_id])
+        @errors += 1
+        next
       end
 
       idler.async do
         begin
-          incr_inflight
-          safe_call(job)
+          @inflight += 1
+
+          if @payment_job.perform_now(job)
+            Log.debug('job_completed', job_id: job[:correlation_id])
+            @done += 1
+          else
+            job['retries'] += 1
+            Log.debug('job_failed', job_id: job[:correlation_id], retries: job['retries'])
+            @queue.push(job)
+          end
+        rescue => e
+          Log.exception(e, 'job_failed', job_id: job[:correlation_id])
         ensure
-          decr_inflight
+          @inflight -= 1
         end
-      end
+      end.wait
     end
   end
 
@@ -42,8 +74,8 @@ class JobQueue
   end
 
   # Enqueue a job (callable). Returns true if enqueued, false if closed.
-  def enqueue(&block)
-    @queue.push(block)
+  def enqueue(data)
+    @queue.push(data)
     true
   rescue => e
     Log.exception(e, 'job_enqueue_error')
@@ -57,54 +89,4 @@ class JobQueue
     Log.warn('queue_close_error', detail: e.message)
   end
 
-  # --- Redis-backed controls/state ---
-  def pause!
-    return unless @redis
-    @redis.call('SET', PAUSE_KEY, '1')
-  end
-
-  def resume!
-    return unless @redis
-    @redis.call('DEL', PAUSE_KEY)
-  end
-
-  def paused?
-    return false unless @redis
-    @redis.call('GET', PAUSE_KEY) == '1'
-  rescue
-    false
-  end
-
-  def inflight
-    return 0 unless @redis
-    (@redis.call('GET', INFLIGHT_KEY) || '0').to_i
-  rescue
-    0
-  end
-
-  private
-
-  def incr_inflight
-    return unless @redis
-    @redis.call('INCR', INFLIGHT_KEY)
-  rescue => e
-    Log.debug(e, kind: 'inflight_incr_error')
-  end
-
-  def decr_inflight
-    return unless @redis
-    v = @redis.call('DECR', INFLIGHT_KEY).to_i
-    if v < 0
-      # Clamp to zero if it ever goes negative due to crashes.
-      @redis.call('SET', INFLIGHT_KEY, '0')
-    end
-  rescue => e
-    Log.debug(e, kind: 'inflight_decr_error')
-  end
-
-  def safe_call(job)
-    job.call
-  rescue => e
-    Log.exception(e, 'job_failed')
-  end
 end
