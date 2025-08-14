@@ -24,7 +24,7 @@ if [ $success -eq 0 ]; then
     echo "Backend is ready! Starting k6 test..."
 
     # Run the official k6 test with 550 requests
-    MAX_REQUESTS=500
+    MAX_REQUESTS=550
     PARTICIPANT="pru"
     TOKEN=$(uuidgen)
 
