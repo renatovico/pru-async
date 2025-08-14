@@ -96,7 +96,7 @@ class JobQueue
 
   def maybe_backoff_due_to_failures
     if @failure_events > @failure_threshold
-      Async::Task.current.sleep(1)
+      Async::Task.current.sleep(@failure_backoff_seconds)
     end
   end
 end

@@ -16,7 +16,7 @@ http:
         healthCheck:
           path: /health
           interval: 1s
-          timeout: 300ms
+          timeout: 3s
         servers:
           - url: "http://api01:3000"
           - url: "http://api02:3000"

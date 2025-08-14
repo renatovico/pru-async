@@ -12,19 +12,20 @@ require_relative 'app/payment_job'
 require_relative 'app/job_queue'
 require_relative 'app/health_monitor'
 
+DEBUG = false
 class PruApp
   def initialize(store:, job_queue:)
     @store = store
     @job_queue = job_queue
     @route_status_counts = Hash.new { |h, k| h[k] = Hash.new(0) }
     @total_requests = 0
-  @total_duration_ms = 0.0
-  @route_duration_ms = Hash.new(0.0)
+    @total_duration_ms = 0.0
+    @route_duration_ms = Hash.new(0.0)
   end
 
   # Handle an incoming Protocol::HTTP::Request and return Protocol::HTTP::Response
   def call(request)
-    start_t = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    start_t = Process.clock_gettime(Process::CLOCK_MONOTONIC) if DEBUG
     method = request.method
     path = URI.parse(request.path || '/').path
     # Route and obtain response
@@ -54,12 +55,14 @@ class PruApp
     response
   ensure
     # Always record latency, even if routing raises later.
-    begin
-      elapsed_ms = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_t) * 1000.0
-      @total_duration_ms += elapsed_ms
-      @route_duration_ms[path] += elapsed_ms
-    rescue
-      # ignore timing errors
+    if DEBUG
+      begin
+        elapsed_ms = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_t) * 1000.0
+        @total_duration_ms += elapsed_ms
+        @route_duration_ms[path] += elapsed_ms
+      rescue
+        # ignore timing errors
+      end
     end
   end
 
@@ -91,8 +94,8 @@ class PruApp
       return json(409, { error: 'Duplicate correlationId', correlationId: correlation_id })
     end
 
-    if @job_queue.enqueue data.dup
-      json(201, { message: 'Payment created', correlationId: correlation_id })
+    if @job_queue.enqueue data
+      json(201, { message: 'Payment created' })
     else
       @store.remove_payment(correlation_id: correlation_id)
       json(501, { error: 'Payment enqueue failed', correlationId: correlation_id })
