@@ -13,15 +13,13 @@ http:
     api-service:
       loadBalancer:
         passHostHeader: true
-        healthCheck:
-          path: /health
-          interval: 1s
-          timeout: 3s
+        # healthCheck:
+        #   path: /health
+        #   interval: 1s
+        #   timeout: 3s
         servers:
           - url: "http://api01:3000"
           - url: "http://api02:3000"
-          - url: "http://api03:3000"
-          - url: "http://api04:3000"
         serversTransport: fast-transport
 
   serversTransports:

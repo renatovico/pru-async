@@ -11,23 +11,14 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.275'
-          memory: '52.5MB'
+          cpus: '0.5'
+          memory: '115MB'
 
   api02:
     <<: *api
     container_name: api02
     hostname: api02
 
-  api03:
-    <<: *api
-    container_name: api03
-    hostname: api03
-
-  api04:
-    <<: *api
-    container_name: api04
-    hostname: api04
 
   redis:
     image: redis:7-alpine
@@ -57,13 +48,11 @@ services:
     depends_on:
       - api01
       - api02
-      - api03
-      - api04
     deploy:
       resources:
         limits:
-          cpus: '0.3'
-          memory: '120MB'
+          cpus: '0.4'
+          memory: '100MB'
 
 networks:
   payment-processor:
