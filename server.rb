@@ -1,3 +1,5 @@
+$stdout.sync = true
+
 require 'json'
 require 'uri'
 require 'async'
@@ -199,14 +201,9 @@ if __FILE__ == $0
       end
     end
 
-    Async(transient: true) do
-      job_queue.start
-    end
-    Async(transient: true) do
-      health_monitor.start
-    end
-
     Async do |task|
+        job_queue.start
+        health_monitor.start
         server.run
     end
   end
