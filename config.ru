@@ -2,35 +2,29 @@
 
 require_relative './server'
 
+notify = Async::Container::Notify::Console.open!
+
 # Boot dependencies (Redis, Store, HealthMonitor, JobQueue) and start background services.
 
 redis_endpoint = Async::Redis::Endpoint.parse(ENV['REDIS_URL'] || 'redis://redis:6379/0')
 redis_client = Async::Redis::Client.new(redis_endpoint)
 store = Store.new(redis_client: redis_client)
-health_monitor = HealthMonitor.new(redis_client: redis_client)
 job_queue = JobQueue.new(
-  concurrency: (ENV['QUEUE_CONCURRENCY'] || '512').to_i,
   redis_client: redis_client,
-  store: store,
-  health_monitor: health_monitor
+  store: store
 )
 
 # Start background tasks using Async in a non-blocking background thread and wait on them.
-  Async do
-    1.upto(10) do |i|
-      Log.info('job_queue_start', iteration: i)
-      Async do
-        job_queue.start
-      end
-  	end
+Async do
+  1.upto(2) do |i|
+    notify&.send(status: "job_queue_start", size: i)
+    Async do
+      job_queue.start
+    end
   end
+end
 
-  Async do
-    # hm_task = health_monitor.start
-    # hm_task.wait
-  end
-
-APP = PruApp.new(store: store, job_queue: job_queue)
+APP = PruApp.new(store: store, job_queue: job_queue, notify: notify)
 
 run lambda { |env|
   # Rack env to Protocol::HTTP::Request adapter is handled by Falcon internally via protocol-rack.

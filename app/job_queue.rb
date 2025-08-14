@@ -1,19 +1,17 @@
 require 'async'
 require 'async/semaphore'
 require 'async/queue'
-require_relative 'logger'
 require_relative 'payment_job'
 
 class JobQueue
   PAUSE_KEY = 'job_queue:paused'.freeze
   INFLIGHT_KEY = 'job_queue:inflight'.freeze
 
-  def initialize(concurrency: 10, redis_client: nil, store: nil, health_monitor: nil)
+  def initialize(redis_client: nil, store: nil, notify: nil)
     @queue = Async::Queue.new
     @redis = redis_client
-    @concurrency = concurrency
     @store = store
-    @payment_job = PaymentJob.new(store: store, redis_client: redis_client, health_monitor: health_monitor)
+    @payment_job = PaymentJob.new(store: store, redis_client: redis_client)
     @inflight = 0
     @done = 0
     @errors = 0
@@ -21,6 +19,7 @@ class JobQueue
     @failure_retry_threshold = 20
     @failure_backoff_seconds = 1
     @failure_events = 0
+    @notify = notify
   end
 
   def inflight
@@ -37,40 +36,38 @@ class JobQueue
 
   # Start worker tasks that consume from the queue.
   def start()
-    Async do
-      Log.info('job_queue_start')
-      # Process items from the queue:
-      # idler = Async::Semaphore.new(@concurrency)
+    @notify&.send(status: "job_queue_start")
+    # Process items from the queue:
+    idler = Async::Semaphore.new(5)
 
-      while (job = @queue.pop)
-        maybe_backoff_due_to_failures
-        # idler.async do
-          if job['retries'] > @failure_retry_threshold
-              Log.warn('job_failed_permanently', job_id: job['correlationId'], retries: job['retries'])
-              @store.remove_payment(correlation_id: job['correlationId'])
-              @errors += 1
-          else
-            begin
-              @inflight += 1
+    while (job = @queue.pop)
+      maybe_backoff_due_to_failures
+      idler.async do
+        if job['retries'] > @failure_retry_threshold
+            @notify&.send(status: "job_failed_permanently", job_id: job['correlationId'], retries: job['retries'])
+            @store.remove_payment(correlation_id: job['correlationId'])
+            @errors += 1
+        else
+          begin
+            @inflight += 1
 
-              if @payment_job.perform_now(job)
-                Log.debug('job_completed', job_id: job['correlationId'])
-                @done += 1
-                @failure_events = 0
-              else
-                job['retries'] += 1
-                Log.debug('job_failed', job_id: job['correlationId'], retries: job['retries'])
-                @failure_events += 1
-                @queue.push(job)
-              end
-            rescue => e
-              Log.exception(e, 'job_failed', job_id: job['correlationId'])
+            if @payment_job.perform_now(job)
+              @notify&.send(status: "job_completed", job_id: job['correlationId'])
+              @done += 1
+              @failure_events = 0
+            else
+              job['retries'] += 1
+              @notify&.send(status: "job_failed", job_id: job['correlationId'], retries: job['retries'])
               @failure_events += 1
-            ensure
-              @inflight -= 1
+              @queue.push(job)
             end
+          rescue => e
+            @notify&.send(status: "job_failed", job_id: job['correlationId'], error: e.message, exception: e.class.name)
+            @failure_events += 1
+          ensure
+            @inflight -= 1
           end
-        # end
+        end
       end
     end
   end
@@ -84,7 +81,7 @@ class JobQueue
     @queue.push(data)
     true
   rescue => e
-    Log.exception(e, 'job_enqueue_error')
+    @notify&.send(status: "job_enqueue_error", error: e.message)
     false
   end
 
@@ -92,7 +89,7 @@ class JobQueue
   def close
     @queue.close
   rescue => e
-    Log.warn('queue_close_error', detail: e.message)
+    @notify&.send(status: "queue_close_error", error: e.message)
   end
 
   private

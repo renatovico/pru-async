@@ -6,7 +6,6 @@ require 'async/http/endpoint'
 require 'async/http/client'
 require 'protocol/http/headers'
 require 'json'
-require_relative 'app/logger'
 
 # A tiny reverse proxy using async-http.
 # - Round-robin load balancing across upstreams.
@@ -102,14 +101,11 @@ if __FILE__ == $0
 
   server = Async::HTTP::Server.for(endpoint) do |request|
     begin
-      Log.info('proxy_request', method: request.method, path: request.path)
       app.call(request)
     rescue => e
-      Log.exception(e, 'proxy_error')
       ::Protocol::HTTP::Response[500, { 'content-type' => 'application/json' }, [{ error: 'Proxy Error' }.to_json]]
     end
   end
-  Log.info('proxy_start', port: port, upstreams: upstreams)
   Async do
     server.run
   end

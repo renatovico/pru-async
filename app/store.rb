@@ -9,13 +9,7 @@ class Store
   end
 
   def save(correlation_id:, processor:, amount:, timestamp: )
-    # return if @redis.call('GET', "processed:#{correlation_id}")
-
-    # Use a simple transaction to ensure both updates happen together.
-    # Store only the amount as the member in a sorted set keyed by timestamp score for fast range queries.
     ts = Time.parse(timestamp).to_f
-    # Log.info('payment_saved', correlation_id: correlation_id, processor: processor, amount: amount, timestamp: timestamp)
-
     @redis.zadd("payments_log_#{processor}", ts, {a: amount.to_f.to_s, c: correlation_id}.to_json)
   end
 

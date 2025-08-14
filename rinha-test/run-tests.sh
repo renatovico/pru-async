@@ -23,7 +23,7 @@ stopContainers() {
     popd > /dev/null
 }
 
-MAX_REQUESTS=550
+MAX_REQUESTS=1024
 
 while true; do
     for directory in ../participantes/*; do

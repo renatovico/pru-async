@@ -21,7 +21,7 @@ services:
     networks:
       - payment-processor
       - net
-    command: bundle exec falcon serve --bind http://0.0.0.0:3000 -n 4
+    command: bundle exec falcon serve --bind http://0.0.0.0:3000 -n 1
     depends_on:
       - redis
     deploy:
@@ -48,6 +48,9 @@ services:
         limits:
          cpus: '0.1'
          memory: '20MB'
+    volumes:
+      - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
 
   nginx:
     image: nginx
@@ -75,4 +78,3 @@ networks:
     external: true
   net:
     driver: bridge
-

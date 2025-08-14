@@ -6,19 +6,18 @@ require 'async'
 require 'async/http/server'
 require 'async/http/endpoint'
 require "async/http/protocol/response"
-require 'time'
-require_relative 'app/logger'
 require 'async/redis'
 require_relative 'app/store'
 require_relative 'app/payment_job'
 require_relative 'app/job_queue'
-require_relative 'app/health_monitor'
+require 'async/container/notify/console'
 
 DEBUG = false
 class PruApp
-  def initialize(store:, job_queue:)
+  def initialize(store:, job_queue:, notify:)
     @store = store
     @job_queue = job_queue
+    @notify = notify
     @route_status_counts = Hash.new { |h, k| h[k] = Hash.new(0) }
     @total_requests = 0
     @total_duration_ms = 0.0
@@ -50,8 +49,7 @@ class PruApp
       @route_status_counts[path][status] += 1
       @total_requests += 1
     rescue => e
-      # If for any reason status can't be read, ignore metrics update
-      Log.warn('metrics_update_failed', error: e.message)
+      @notify&.send(status: "metrics_update_failed", error: e.message)
     end
 
     response
@@ -92,7 +90,7 @@ class PruApp
 
     accepted = @store.begin_payment(correlation_id: correlation_id)
     unless accepted
-      Log.warn('duplicate_payment_rejected', correlation_id: correlation_id)
+      @notify&.send(status: "duplicate_payment_rejected", correlation_id: correlation_id)
       return json(409, { error: 'Duplicate correlationId', correlationId: correlation_id })
     end
 
@@ -106,7 +104,7 @@ class PruApp
   rescue JSON::ParserError
     json(400, { error: 'Invalid JSON' })
   rescue => e
-    Log.exception(e, 'payment_request_failed', correlationId: correlation_id, error: e.message)
+    @notify&.send(status: "payment_request_failed", correlationId: correlation_id, error: e.message)
     json(500, { error: 'Internal Server Error', details: e.message })
   end
 
@@ -117,7 +115,7 @@ class PruApp
 
     json(200, @store.summary(from: params['from'], to: params['to']))
   rescue => e
-    Log.error('payments_summary_failed', error: e.message)
+    @notify&.send(status: "payments_summary_failed", error: e.message)
     json(500, { error: 'Internal Server Error' })
   end
 
