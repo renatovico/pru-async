@@ -18,6 +18,7 @@ class JobQueue
     @done = 0
     @errors = 0
     @failure_threshold = 150
+    @failure_retry_threshold = 20
     @failure_backoff_seconds = 1
     @failure_events = 0
   end
@@ -44,7 +45,7 @@ class JobQueue
       while (job = @queue.pop)
         maybe_backoff_due_to_failures
         # idler.async do
-          if job['retries'] > 100
+          if job['retries'] > @failure_retry_threshold
               Log.warn('job_failed_permanently', job_id: job['correlationId'], retries: job['retries'])
               @store.remove_payment(correlation_id: job['correlationId'])
               @errors += 1

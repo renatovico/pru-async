@@ -50,7 +50,7 @@ make processors.down
 ### Desenvolvimento da API
 
 ```bash
-# Iniciar ambiente de desenvolvimento
+# Iniciar ambiente de desenvolvimento (Falcon + Nginx + Redis)
 make start.dev
 
 # Testar endpoints da API via proxy Ruby (localhost:9999)

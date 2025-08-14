@@ -8,4 +8,4 @@ COPY Gemfile.lock .
 RUN bundle install
 COPY . .
 EXPOSE 3000
-CMD ["ruby", "server.rb"]
+CMD ["bundle", "exec", "falcon", "serve", "--bind", "http://0.0.0.0:3000", "-n", "4"]

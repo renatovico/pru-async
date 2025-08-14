@@ -5,7 +5,7 @@ services:
       target: base
     volumes:
       - .:/app
-      - rubygems6:/usr/local/bundle
+      - rubygems_v3:/usr/local/bundle
 
   api01: &api
     build:
@@ -17,33 +17,23 @@ services:
       - REDIS_URL=redis://redis:6379/0
     volumes:
       - .:/app
-      - rubygems6:/usr/local/bundle
+      - rubygems_v3:/usr/local/bundle
     networks:
       - payment-processor
-      - backend
-    command: ruby server.rb
+      - net
+    command: bundle exec falcon serve --bind http://0.0.0.0:3000 -n 4
     depends_on:
       - redis
     deploy:
       resources:
         limits:
-          cpus: '0.275'
-          memory: '52.5MB'
+          cpus: '0.5'
+          memory: '155MB'
 
   api02:
     <<: *api
     container_name: api02
     hostname: api02
-
-  api03:
-    <<: *api
-    container_name: api03
-    hostname: api03
-
-  api04:
-    <<: *api
-    container_name: api04
-    hostname: api04
 
   redis:
     image: redis:7-alpine
@@ -52,38 +42,37 @@ services:
     ports:
       - 6379:6379
     networks:
-      - backend
+      - net
     deploy:
       resources:
         limits:
-          cpus: '0.1'
-          memory: '20MB'
+         cpus: '0.1'
+         memory: '20MB'
 
-  traefik:
-    image: traefik:v3.1
-    container_name: traefik
-    command: --configFile=/etc/traefik/traefik.yml
+  nginx:
+    image: nginx
+    container_name: nginx
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
     ports:
       - 9999:9999
-    volumes:
-      - ./traefik.yml:/etc/traefik/traefik.yml:ro
-      - ./http.yml:/etc/traefik/dynamic/http.yml:ro
     networks:
-      - backend
+      - net
     depends_on:
+      - redis
       - api01
       - api02
-      - api03
-      - api04
     deploy:
       resources:
         limits:
-          cpus: '0.3'
-          memory: '120MB'
-
+          cpus: '0.2'
+          memory: '20MB'
 volumes:
-  rubygems6:
+  rubygems_v3:
+
 networks:
   payment-processor:
     external: true
-  backend:
+  net:
+    driver: bridge
+

@@ -1,4 +1,4 @@
-$stdout.sync = true
+# $stdout.sync = true
 
 require 'json'
 require 'uri'
@@ -167,44 +167,5 @@ class PruApp
       routesMeanResponseTimeMs: route_means,
       queue: queue_state
     })
-  end
-end
-
-if __FILE__ == $0
-  Sync do
-    port = Integer(ENV.fetch('PORT', '3000'))
-    Log.info('server_start', port: port)
-
-    redis_endpoint = Async::Redis::Endpoint.parse(ENV['REDIS_URL'] || 'redis://redis:6379/0')
-    redis_client = Async::Redis::Client.new(redis_endpoint)
-    store = Store.new(redis_client: redis_client)
-    health_monitor = HealthMonitor.new(redis_client: redis_client)
-    job_queue = JobQueue.new(
-      concurrency: (ENV['QUEUE_CONCURRENCY'] || '512').to_i,
-      redis_client: redis_client,
-      store: store,
-      health_monitor: health_monitor
-    )
-
-
-    endpoint = Async::HTTP::Endpoint.parse("http://0.0.0.0:#{port}")
-    app = PruApp.new(store: store, job_queue: job_queue)
-
-    # Start background workers once when reactor boots:
-    server = Async::HTTP::Server.for(endpoint) do |request|
-      begin
-        Log.debug('request', method: request.method, path: request.path)
-        app.call(request)
-      rescue => e
-        Log.warn('request_failed', method: request.method, path: request.path, error: e.message, backtrace: e.backtrace)
-        # ignore logging issues
-      end
-    end
-
-    Async do |task|
-        job_queue.start
-        health_monitor.start
-        server.run
-    end
   end
 end

@@ -26,7 +26,7 @@ api.setup: ## Set up the API service
 
 start.dev: ## Start the development environment
 	@make processors.up
-	@docker compose up -d traefik
+	@docker compose up -d nginx
 
 api.bash: ## Open a bash shell in the API container
 	@docker compose run --rm api01 bash
@@ -77,7 +77,7 @@ rinha.official.prod: ## Run official Rinha using the production image
 	@docker rmi renatoelias/pru-async
 
 	@docker compose -f docker-compose.processor.yml up -d
-	@docker compose -f docker-compose.prod.yml up -d traefik
+	@docker compose -f docker-compose.prod.yml up -d nginx
 
 	@./scripts/purge-processors.sh
 	@./scripts/test-api-purge.sh

@@ -1,50 +1,56 @@
-require 'logger'
 require 'json'
 require 'time'
 
 module Log
+  # Numeric levels for simple filtering, compatible with common severities
   LEVELS = {
-    'DEBUG' => Logger::DEBUG,
-    'INFO' => Logger::INFO,
-    'WARN' => Logger::WARN,
-    'ERROR' => Logger::ERROR,
-    'FATAL' => Logger::FATAL,
-  }
+    'DEBUG' => 10,
+    'INFO'  => 20,
+    'WARN'  => 30,
+    'ERROR' => 40,
+    'FATAL' => 50,
+  }.freeze
 
-  class JsonFormatter
-    def call(severity, time, progname, msg)
-      base = {
-        time: time.utc.iso8601(3),
-        level: severity,
-        prog: progname,
-      }.compact
+  PROGNAME = 'pru'
 
-      record = if msg.is_a?(Hash)
-        base.merge(msg)
-      else
-        base.merge(message: msg.is_a?(String) ? msg : msg.inspect)
-      end
-      record.to_json + "\n"
+  def self.level
+    @level ||= begin
+      env = ENV['LOG_LEVEL'].to_s.upcase
+      LEVELS.fetch(env, LEVELS['INFO'])
     end
   end
 
-  def self.logger
-    return @logger if defined?(@logger) && @logger
-
-    @logger = Logger.new($stdout)
-    @logger.level = LEVELS.fetch(ENV['LOG_LEVEL'].to_s.upcase, Logger::INFO)
-    @logger.progname = 'pru'
-    @logger.formatter = JsonFormatter.new
-    @logger
+  def self.level=(lvl)
+    @level = case lvl
+    when String then LEVELS.fetch(lvl.upcase, LEVELS['INFO'])
+    when Integer then lvl
+    else LEVELS['INFO']
+    end
   end
 
-  def self.debug(msg, **ctx); logger.debug(attach_ctx(msg, ctx)); end
-  def self.info(msg, **ctx); logger.info(attach_ctx(msg, ctx)); end
-  def self.warn(msg, **ctx); logger.warn(attach_ctx(msg, ctx)); end
-  def self.error(msg, **ctx); logger.error(attach_ctx(msg, ctx)); end
+  def self.emit(severity, payload)
+    return unless LEVELS[severity] >= level
+
+    Async do
+      time = Time.now.utc.iso8601(3)
+      base = { time: time, level: severity, prog: PROGNAME }
+      record = if payload.is_a?(Hash)
+        base.merge(payload)
+      else
+        base.merge(message: payload.is_a?(String) ? payload : payload.inspect)
+      end
+      $stdout.write(record.to_json)
+      $stdout.write("\n")
+    end
+  end
+
+  def self.debug(msg, **ctx); emit('DEBUG', attach_ctx(msg, ctx)); end
+  def self.info(msg, **ctx);  emit('INFO',  attach_ctx(msg, ctx)); end
+  def self.warn(msg, **ctx);  emit('WARN',  attach_ctx(msg, ctx)); end
+  def self.error(msg, **ctx); emit('ERROR', attach_ctx(msg, ctx)); end
 
   def self.exception(ex, msg = 'error', **ctx)
-    logger.error(attach_ctx(msg, ctx.merge(error: ex.class.name, detail: ex.message)))
+    emit('ERROR', attach_ctx(msg, ctx.merge(error: ex.class.name, detail: ex.message)))
   end
 
   def self.attach_ctx(msg, ctx)

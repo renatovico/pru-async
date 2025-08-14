@@ -1,6 +1,5 @@
 require 'time'
 require 'json'
-require 'bigdecimal'
 
 require 'async'
 
@@ -52,8 +51,8 @@ class Store
     to_score = to ? Time.parse(to).to_f : '+inf'
 
     summary = {
-      'default' => { totalRequests: 0, totalAmount: BigDecimal("0.00") },
-      'fallback' => { totalRequests: 0, totalAmount: BigDecimal("0.00") }
+      'default' => { totalRequests: 0, totalAmount: 0.00 },
+      'fallback' => { totalRequests: 0, totalAmount: 0.00 }
     }
 
     payments_default = @redis.call('ZRANGEBYSCORE', 'payments_log_default', from_score, to_score)
@@ -62,18 +61,18 @@ class Store
     summary['default'][:totalRequests] += payments_default&.size || 0
     payments_default&.each do |data|
       amount_str = JSON.parse(data)['a']
-      summary['default'][:totalAmount] += BigDecimal(amount_str, 12)
+      summary['default'][:totalAmount] += amount_str.to_f
     end
 
     summary['fallback'][:totalRequests] += payments_fallback&.size || 0
     payments_fallback&.each do |data|
       amount_str = JSON.parse(data)['a']
-      summary['fallback'][:totalAmount] += BigDecimal(amount_str, 12)
+      summary['fallback'][:totalAmount] += amount_str.to_f
     end
 
     # Round to 2 decimal places to avoid floating-point precision issues
     summary.each do |processor, data|
-      data[:totalAmount] = ("%.2f" % data[:totalAmount]).to_f
+      data[:totalAmount] = data[:totalAmount].round(2)
     end
 
     summary

@@ -9,3 +9,7 @@ gem 'connection_pool'
 gem 'async'
 gem 'async-http'
 gem 'async-redis'
+
+# Falcon (Rack-compatible async web server)
+gem 'falcon'
+gem 'rack'
