@@ -17,6 +17,9 @@ class JobQueue
     @inflight = 0
     @done = 0
     @errors = 0
+    @failure_threshold = 150
+    @failure_backoff_seconds = 1
+    @failure_events = 0
   end
 
   def inflight
@@ -35,37 +38,37 @@ class JobQueue
   def start()
     Log.info('job_queue_start')
     # Process items from the queue:
-    idler = Async::Semaphore.new(@concurrency)
+    # idler = Async::Semaphore.new(@concurrency)
 
     while (job = @queue.pop)
-      Log.debug('job_started', job_id: job[:correlation_id])
-      # If paused, wait until resumed before scheduling the job
+      maybe_backoff_due_to_failures
+      # idler.async do
+        if job['retries'] > 100
+            Log.warn('job_failed_permanently', job_id: job['correlationId'], retries: job['retries'])
+            @store.remove_payment(correlation_id: job['correlationId'])
+            @errors += 1
+        else
+          begin
+            @inflight += 1
 
-      if job['retries'] > 100
-        Log.warn('job_failed_permanently', job_id: job[:correlation_id], retries: job['retries'])
-        @store.remove_payment(correlation_id: job[:correlation_id])
-        @errors += 1
-        next
-      end
-
-      idler.async do
-        begin
-          @inflight += 1
-
-          if @payment_job.perform_now(job)
-            Log.debug('job_completed', job_id: job[:correlation_id])
-            @done += 1
-          else
-            job['retries'] += 1
-            Log.debug('job_failed', job_id: job[:correlation_id], retries: job['retries'])
-            @queue.push(job)
+            if @payment_job.perform_now(job)
+              Log.debug('job_completed', job_id: job['correlationId'])
+              @done += 1
+              @failure_events = 0
+            else
+              job['retries'] += 1
+              Log.debug('job_failed', job_id: job['correlationId'], retries: job['retries'])
+              @failure_events += 1
+              @queue.push(job)
+            end
+          rescue => e
+            Log.exception(e, 'job_failed', job_id: job['correlationId'])
+            @failure_events += 1
+          ensure
+            @inflight -= 1
           end
-        rescue => e
-          Log.exception(e, 'job_failed', job_id: job[:correlation_id])
-        ensure
-          @inflight -= 1
         end
-      end
+      # end
     end
   end
 
@@ -89,4 +92,11 @@ class JobQueue
     Log.warn('queue_close_error', detail: e.message)
   end
 
+  private
+
+  def maybe_backoff_due_to_failures
+    if @failure_events > @failure_threshold
+      Async::Task.current.sleep(1)
+    end
+  end
 end

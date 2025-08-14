@@ -20,15 +20,17 @@ http:
         servers:
           - url: "http://api01:3000"
           - url: "http://api02:3000"
+          - url: "http://api03:3000"
+          - url: "http://api04:3000"
         serversTransport: fast-transport
 
   serversTransports:
     fast-transport:
       forwardingTimeouts:
         dialTimeout: 200ms
-        responseHeaderTimeout: 1s
+        responseHeaderTimeout: 2s
         idleConnTimeout: 20s
-      maxIdleConnsPerHost: 256
+      maxIdleConnsPerHost: 128
       insecureSkipVerify: true
 
   # middlewares:

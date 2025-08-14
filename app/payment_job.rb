@@ -21,9 +21,7 @@ class PaymentJob
     default_open && fallback_open
   end
 
-  def perform_now(payload, retries: nil)
-    retries ||= 0
-
+  def perform_now(payload)
     correlation_id = payload['correlationId']
     amount = payload['amount']
 

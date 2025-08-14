@@ -175,7 +175,7 @@ if __FILE__ == $0
     store = Store.new(redis_client: redis_client)
     health_monitor = HealthMonitor.new(redis_client: redis_client)
     job_queue = JobQueue.new(
-      concurrency: (ENV['QUEUE_CONCURRENCY'] || '128').to_i,
+      concurrency: (ENV['QUEUE_CONCURRENCY'] || '512').to_i,
       redis_client: redis_client,
       store: store,
       health_monitor: health_monitor
@@ -197,7 +197,7 @@ if __FILE__ == $0
     end
 
     Async(transient: true) do
-        job_queue.start
+      job_queue.start
     end
     Async(transient: true) do
       health_monitor.start
