@@ -41,7 +41,7 @@ class JobQueue
       Log.debug('job_started', job_id: job[:correlation_id])
       # If paused, wait until resumed before scheduling the job
 
-      if job['retries'] > 30
+      if job['retries'] > 100
         Log.warn('job_failed_permanently', job_id: job[:correlation_id], retries: job['retries'])
         @store.remove_payment(correlation_id: job[:correlation_id])
         @errors += 1
@@ -65,7 +65,7 @@ class JobQueue
         ensure
           @inflight -= 1
         end
-      end.wait
+      end
     end
   end
 

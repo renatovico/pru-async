@@ -1,7 +1,6 @@
 require 'json'
 require 'async'
-require 'net/http'
-require 'uri'
+require 'async/http/internet/instance'
 require_relative 'logger'
 
 require_relative 'store'
@@ -63,26 +62,26 @@ class PaymentJob
   def try_processor(processor_name, payload, correlation_id, timeout: nil)
     # Log.debug('try_processor', processor: processor_name, correlation_id: correlation_id, timeout: timeout)
 
-    endpoint = "http://payment-processor-#{processor_name}:8080/payments"
-    uri = URI(endpoint)
-    http = Net::HTTP.new(uri.host, uri.port)
+    url = "http://payment-processor-#{processor_name}:8080/payments"
+    headers = [['content-type', 'application/json']]
+    body = payload.to_json
 
-    if timeout
-      if timeout > 2
-        timeout = 2
-      end
+    # clamp timeout
+    to = (timeout || 1.0).to_f
+    to = 2.0 if to > 2.0
 
-      http.open_timeout = timeout
-      http.read_timeout = timeout + 0.5
-    end
-
-    request = Net::HTTP::Post.new(uri.path, 'Content-Type' => 'application/json')
-    request.body = payload.to_json
-    response = http.request(request)
-    response.is_a?(Net::HTTPSuccess)
-  rescue => e
+    response = Async::HTTP::Internet.post(url, headers, body)
+    ok = response.status >= 200 && response.status < 300
+    ok
+  rescue
     # Log.debug(e, kind: 'processor_error', processor: processor_name, correlation_id: correlation_id)
     false
+  ensure
+    begin
+      response&.close
+    rescue
+      # ignore
+    end
   end
 
   private
