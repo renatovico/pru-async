@@ -1,6 +1,6 @@
 services:
   api01: &api
-    image: renatoelias/pru-async
+    image: renatoelias/pru-async:latest
     container_name: api01
     hostname: api01
     environment:
@@ -11,13 +11,23 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
-          memory: '115MB'
+          cpus: '0.275'
+          memory: '52.5MB'
 
   api02:
     <<: *api
     container_name: api02
     hostname: api02
+
+  api03:
+    <<: *api
+    container_name: api03
+    hostname: api03
+
+  api04:
+    <<: *api
+    container_name: api04
+    hostname: api04
 
   redis:
     image: redis:7-alpine
@@ -30,8 +40,8 @@ services:
     deploy:
       resources:
         limits:
-         cpus: '0.2'
-         memory: '40MB'
+         cpus: '0.1'
+         memory: '20MB'
 
   traefik:
     image: traefik:v3.1
@@ -47,11 +57,13 @@ services:
     depends_on:
       - api01
       - api02
+      - api03
+      - api04
     deploy:
       resources:
         limits:
           cpus: '0.3'
-          memory: '80MB'
+          memory: '120MB'
 
 networks:
   payment-processor:
