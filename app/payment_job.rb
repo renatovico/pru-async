@@ -45,22 +45,30 @@ class PaymentJob
   end
 
   def try_processor(processor_name, payload)
-    Sync do |task|
-      task.with_timeout(1) do
+    time_request = Time.now.iso8601(3)
+    Async do |task|
+      task.with_timeout(0.05) do
         url = "http://payment-processor-#{processor_name}:8080/payments"
         headers = [['content-type', 'application/json']]
-        time_request = Time.now.iso8601(3)
         payload['requestedAt'] = time_request
         body = payload.to_json
 
-        # Request will timeout after 2 seconds
         response = Async::HTTP::Internet.post(url, headers, body)
         ok = response.status >= 200 && response.status < 300
         [ok, time_request]
       ensure
         response&.close
       end
-    rescue
+    rescue Async::TimeoutError
+      #check if process is not processed
+      result = Sync do
+        url = "http://payment-processor-#{processor_name}:8080/payments/#{payload['correlationId']}"
+
+        response = Async::HTTP::Internet.get(url)
+        response.status >= 200 && response.status < 300
+      end
+      [result, time_request]
+    rescue => e
       [false, nil]
     end
   end
