@@ -98,7 +98,7 @@ class JobQueue
   def maybe_backoff_due_to_failures
     if @failure_events > @failure_threshold
       # Progressive backoff based on the number of failures
-      backoff_time = [@failure_backoff_seconds * (0.1 + (@failure_events / @failure_threshold)), 2].min
+      backoff_time = [@failure_backoff_seconds * (0.1 + (@failure_events / @failure_threshold)), 1].min
       Async::Task.current.sleep(backoff_time)
     end
   end
