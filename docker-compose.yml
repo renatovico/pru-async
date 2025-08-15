@@ -15,17 +15,17 @@ services:
     hostname: api01
     environment:
       - REDIS_URL=redis://redis:6379/0
-      - RUBY_GC_HEAP_INIT_SLOTS=1600000
+      - RUBY_GC_HEAP_INIT_SLOTS=20000
       - RUBY_GC_HEAP_FREE_SLOTS=4096
       - RUBY_GC_HEAP_GROWTH_FACTOR=1.2
-      - RUBY_GC_HEAP_GROWTH_MAX_SLOTS=10000
+      - RUBY_GC_HEAP_GROWTH_MAX_SLOTS=30000
     volumes:
       - .:/app
       - rubygems_v3:/usr/local/bundle
     networks:
       - payment-processor
       - net
-    command: bundle exec falcon serve --bind http://0.0.0.0:3000  -n  5 --no-restart  -t 10
+    command: bundle exec falcon --bind http://0.0.0.0:3000  -n  2 --no-restart  -t 10
     depends_on:
       - redis
     deploy:

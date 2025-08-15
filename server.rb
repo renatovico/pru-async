@@ -12,13 +12,23 @@ require_relative 'app/payment_job'
 require_relative 'app/job_queue'
 require 'async/container/notify/console'
 
-
-
 class PruApp
-  def initialize(notify:, job_queue:, store:)
-    @job_queue = job_queue
+  def initialize(notify:, redis_client:, store:)
     @store = store
     @notify = notify
+    @job_queue = JobQueue.new(
+      redis_client: redis_client,
+      store: store
+    )
+
+    Async(transient: true) do
+      1.upto(5) do |i|
+        Async do
+          @job_queue.start(thread_id: i).wait
+        end
+      end
+    end
+    puts "Job queue started with 5 worker threads."
   end
 
   def call(request_envt)
@@ -54,7 +64,8 @@ class PruApp
     body = request.read
     return json(400, { error: 'Bad Request' }) if body.nil?
 
-    #@job_queue.enqueue body.dup
+    @job_queue.enqueue body.dup
+
     json(201, { message: 'Payment created' })
   rescue => e
     @notify&.send(status: "payment_request_failed", error: e.message)

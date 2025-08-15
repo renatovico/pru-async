@@ -8,6 +8,7 @@ class PaymentJob
     @redis = redis_client
     @last_failure_default_time = nil
     @fallback_mode_start_time = nil
+    @semaphore = Async::Semaphore.new(1)
   end
 
   def perform_now(payload)
@@ -23,10 +24,6 @@ class PaymentJob
     raise 'Missing correlationId' if correlation_id.nil?
     raise 'Missing amount' if amount.nil?
 
-
-    correlation_id = payload['correlationId']
-    amount = payload['amount']
-
     requested_at = Time.now.iso8601(3)
     payload_job = {
       correlationId: correlation_id,
@@ -34,35 +31,36 @@ class PaymentJob
       requestedAt: requested_at
     }
 
-    # Try default processor first if allowed
-    result = try_processor(processor, payload_job)
-    if result
-      @store.save(correlation_id: correlation_id, processor: processor, amount: amount, timestamp: requested_at)
-      record_success(processor)
-      true
-    else
-      record_failure(processor)
-      false
+    Sync do |task|
+      @semaphore.async do |task_2|
+        # Try default processor first if allowed
+        result = try_processor(processor, payload_job, task: task_2)
+        if result
+          @store.save(correlation_id: correlation_id, processor: processor, amount: amount, timestamp: requested_at)
+          record_success(processor)
+          true
+        else
+          record_failure(processor)
+          false
+        end
+      end
     end
   end
 
-  def try_processor(processor_name, payload)
+  def try_processor(processor_name, payload, task: nil)
     url = "http://payment-processor-#{processor_name}:8080/payments"
     headers = [['content-type', 'application/json']]
     body = payload.to_json
 
-    Sync do |task|
-      # Request will timeout after 2 seconds
-      task.with_timeout(3) do
-        response = Async::HTTP::Internet.post(url, headers, body)
-        ok = response.status >= 200 && response.status < 300
-        return ok
-      ensure
-        response&.close
-      end
-    rescue Async::TimeoutError
-      return false
+    # Request will timeout after 2 seconds
+    task.with_timeout(3) do
+      response = Async::HTTP::Internet.post(url, headers, body)
+      ok = response.status >= 200 && response.status < 300
+      ok
     end
+  rescue => e
+    puts "Error processing payment with #{processor_name}: #{e.message}"
+    return false
   end
 
   private
@@ -107,7 +105,7 @@ class PaymentJob
     # Only use fallback for 3 seconds, then try default again
     if current_time - @fallback_mode_start_time <= 2
       # Check if fallback processor is available
-        return 'fallback'
+      return 'fallback'
     end
 
     return 'default'

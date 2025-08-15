@@ -4,9 +4,6 @@ require 'async/queue'
 require_relative 'payment_job'
 
 class JobQueue
-  PAUSE_KEY = 'job_queue:paused'.freeze
-  INFLIGHT_KEY = 'job_queue:inflight'.freeze
-
   def initialize(redis_client: nil, store: nil, notify: nil)
     @queue = Async::Queue.new
     @redis = redis_client
@@ -35,8 +32,8 @@ class JobQueue
   end
 
   # Start worker tasks that consume from the queue.
-  def start()
-    @notify&.send(status: "job_queue_start")
+  def start(thread_id: nil)
+    @notify&.send(status: "job_queue_start", thread_id: thread_id)
     # Process items from the queue:
     #idler = Async::Semaphore.new(128) # Limit concurrency to 128 workers
 
@@ -58,14 +55,18 @@ class JobQueue
               @queue.push(job)
             end
           rescue => e
-            @notify&.send(status: "job_failed",  error: e.message, exception: e.class.name)
+            puts "Error processing job: #{e.message} on thread #{thread_id} - #{e.backtrace.join("\n")}"
+            @notify&.send(status: "job_failed",  error: e.message, backtrace: e.backtrace, thread_id: thread_id)
             @failure_events += 1
+            @queue.push(job) # Requeue the job for retry
           ensure
             @inflight -= 1
           end
         end
       #end
     end
+
+    @notify&.send(status: "job_queue_finish", thread_id: thread_id)
   end
 
   def queue
@@ -75,10 +76,7 @@ class JobQueue
   # Enqueue a job (callable). Returns true if enqueued, false if closed.
   def enqueue(data)
     @queue.push([0, data])
-    true
-  rescue => e
-    @notify&.send(status: "job_enqueue_error", error: e.message)
-    false
+    @notify&.send(status: "job_enqueued", data: data)
   end
 
   # Close the queue: signal workers to stop after draining.
