@@ -21,14 +21,12 @@ class PruApp
       store: store
     )
 
-    Async(transient: true) do
-      1.upto(5) do |i|
-        Async do
-          @job_queue.start(thread_id: i).wait
-        end
+    Async do
+      1.upto(3) do |thread_id|
+        # Start worker tasks that consume from the queue.
+        @job_queue.start(thread_id: thread_id)
       end
     end
-    puts "Job queue started with 5 worker threads."
   end
 
   def call(request_envt)

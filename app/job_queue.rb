@@ -35,18 +35,20 @@ class JobQueue
   def start(thread_id: nil)
     @notify&.send(status: "job_queue_start", thread_id: thread_id)
     # Process items from the queue:
-    #idler = Async::Semaphore.new(128) # Limit concurrency to 128 workers
 
     while (job = @queue.pop)
       maybe_backoff_due_to_failures
-      # idler.async do
+
+      Sync do
         if job[0] > @failure_retry_threshold
-            @errors += 1
+          @errors += 1
         else
           begin
             @inflight += 1
 
-            if @payment_job.perform_now(job)
+            result = @payment_job.perform_now(job)
+
+            if result
               @done += 1
               @failure_events = 0
             else
@@ -63,7 +65,8 @@ class JobQueue
             @inflight -= 1
           end
         end
-      #end
+
+      end
     end
 
     @notify&.send(status: "job_queue_finish", thread_id: thread_id)
@@ -91,7 +94,7 @@ class JobQueue
   def maybe_backoff_due_to_failures
     if @failure_events > @failure_threshold
       # Progressive backoff based on the number of failures
-      backoff_time = [@failure_backoff_seconds * (@failure_events / @failure_threshold), 20].min
+      backoff_time = [@failure_backoff_seconds * (0.1 + (@failure_events / @failure_threshold)), 5].min
       Async::Task.current.sleep(backoff_time)
     end
   end
