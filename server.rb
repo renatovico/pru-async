@@ -20,9 +20,8 @@ class PruApp
       redis_client: redis_client,
       store: store
     )
-
-    Async do
-      1.upto(3) do |thread_id|
+    1.upto(1) do |thread_id|
+      Async do |task|
         # Start worker tasks that consume from the queue.
         @job_queue.start(thread_id: thread_id)
       end

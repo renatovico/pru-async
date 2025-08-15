@@ -35,38 +35,14 @@ class JobQueue
   def start(thread_id: nil)
     @notify&.send(status: "job_queue_start", thread_id: thread_id)
     # Process items from the queue:
+    # semaphore = Async::Semaphore.new(4)
+
 
     while (job = @queue.pop)
       maybe_backoff_due_to_failures
-
-      Sync do
-        if job[0] > @failure_retry_threshold
-          @errors += 1
-        else
-          begin
-            @inflight += 1
-
-            result = @payment_job.perform_now(job)
-
-            if result
-              @done += 1
-              @failure_events = 0
-            else
-              job[0] += 1
-              @failure_events += 1
-              @queue.push(job)
-            end
-          rescue => e
-            puts "Error processing job: #{e.message} on thread #{thread_id} - #{e.backtrace.join("\n")}"
-            @notify&.send(status: "job_failed",  error: e.message, backtrace: e.backtrace, thread_id: thread_id)
-            @failure_events += 1
-            @queue.push(job) # Requeue the job for retry
-          ensure
-            @inflight -= 1
-          end
-        end
-
-      end
+      # semaphore.async do |task|
+      process_job(job, thread_id)
+      # end
     end
 
     @notify&.send(status: "job_queue_finish", thread_id: thread_id)
@@ -90,6 +66,37 @@ class JobQueue
   end
 
   private
+
+  def process_job(job, thread_id)
+    Sync do
+      if job[0] > @failure_retry_threshold
+        @errors += 1
+      else
+        begin
+          @inflight += 1
+
+          result = @payment_job.perform_now(job)
+
+          if result
+            @done += 1
+            @failure_events = 0
+          else
+            job[0] += 1
+            @failure_events += 1
+            @queue.push(job)
+          end
+        rescue => e
+          puts "Error processing job: #{e.message} on thread #{thread_id} - #{e.backtrace.join("\n")}"
+          @notify&.send(status: "job_failed", error: e.message, backtrace: e.backtrace, thread_id: thread_id)
+          @failure_events += 1
+          @queue.push(job) # Requeue the job for retry
+        ensure
+          @inflight -= 1
+        end
+      end
+
+    end
+  end
 
   def maybe_backoff_due_to_failures
     if @failure_events > @failure_threshold

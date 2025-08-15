@@ -25,7 +25,7 @@ services:
     networks:
       - payment-processor
       - net
-    command: bundle exec falcon --bind http://0.0.0.0:3000  -n  2 --no-restart  -t 20
+    command: bundle exec falcon --bind http://0.0.0.0:3000  -n 1 --no-restart  -t 20
     depends_on:
       - redis
     deploy:
