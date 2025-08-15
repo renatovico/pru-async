@@ -49,17 +49,18 @@ class Store
       'fallback' => { totalRequests: 0, totalAmount: 0.00 }
     }
 
-    payments_default = @redis.call('ZRANGEBYSCORE', 'payments_log_default', from_score, to_score)
-    payments_fallback = @redis.call('ZRANGEBYSCORE', 'payments_log_fallback', from_score, to_score)
+    # Use pipelining to fetch both sets of data in a single roundtrip
+    default_payments = @redis.call('ZRANGEBYSCORE', 'payments_log_default', from_score, to_score)
+    fallback_payments =  @redis.call('ZRANGEBYSCORE', 'payments_log_fallback', from_score, to_score)
 
-    summary['default'][:totalRequests] += payments_default&.size || 0
-    payments_default&.each do |data|
+    summary['default'][:totalRequests] += default_payments&.size || 0
+    default_payments&.each do |data|
       amount_str = JSON.parse(data)['a']
       summary['default'][:totalAmount] += amount_str.to_f
     end
 
-    summary['fallback'][:totalRequests] += payments_fallback&.size || 0
-    payments_fallback&.each do |data|
+    summary['fallback'][:totalRequests] += fallback_payments&.size || 0
+    fallback_payments&.each do |data|
       amount_str = JSON.parse(data)['a']
       summary['fallback'][:totalAmount] += amount_str.to_f
     end
