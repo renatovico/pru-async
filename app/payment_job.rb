@@ -7,6 +7,7 @@ class PaymentJob
     @store = store
     @redis = redis_client
     @last_failure_default_time = nil
+    @fallback_mode_start_time = nil
   end
 
   def perform_now(payload)
@@ -44,7 +45,7 @@ class PaymentJob
 
     Sync do |task|
       # Request will timeout after 2 seconds
-      task.with_timeout(5) do
+      task.with_timeout(3) do
         response = Async::HTTP::Internet.post(url, headers, body)
         ok = response.status >= 200 && response.status < 300
         return ok
@@ -57,7 +58,6 @@ class PaymentJob
   end
 
   private
-
 
   def record_failure(processor)
     case processor
@@ -74,6 +74,7 @@ class PaymentJob
     case processor
     when 'default'
       @last_failure_default_time = nil
+      @fallback_mode_start_time = nil # Reset fallback mode when default succeeds
     when 'fallback'
       @last_failure_fallback_time = nil
     else
@@ -82,14 +83,29 @@ class PaymentJob
   end
 
   def target_processor
-    # Check if default processor is available
-    if @last_failure_default_time.nil? || Time.now - @last_failure_default_time > 20
+    current_time = Time.now
+
+    # Always prefer default processor unless it's in outage for more than 30 seconds
+    if @last_failure_default_time.nil? || current_time - @last_failure_default_time > 30
+      @fallback_mode_start_time = nil # Reset fallback mode
       return 'default'
     end
 
-    # Check if fallback processor is available
-    if @last_failure_fallback_time.nil? || Time.now - @last_failure_fallback_time > 20
-      return 'fallback'
+    # If default is in outage, enter fallback mode if not already in it
+    if @fallback_mode_start_time.nil?
+      @fallback_mode_start_time = current_time
+    end
+
+    # Only use fallback for 3 seconds, then try default again
+    if current_time - @fallback_mode_start_time <= 3
+      # Check if fallback processor is available
+      if @last_failure_fallback_time.nil? || current_time - @last_failure_fallback_time > 20
+        return 'fallback'
+      end
+    else
+      # After 3 seconds in fallback mode, force switch back to default
+      @fallback_mode_start_time = nil
+      return 'default'
     end
 
     nil # No processor available now

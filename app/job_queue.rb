@@ -38,11 +38,11 @@ class JobQueue
   def start()
     @notify&.send(status: "job_queue_start")
     # Process items from the queue:
-    idler = Async::Semaphore.new(20)
+    #idler = Async::Semaphore.new(128) # Limit concurrency to 128 workers
 
     while (job = @queue.pop)
       maybe_backoff_due_to_failures
-      idler.async do
+      # idler.async do
         if job['retries'] > @failure_retry_threshold
             @notify&.send(status: "job_failed_permanently", job_id: job['correlationId'], retries: job['retries'])
             @store.remove_payment(correlation_id: job['correlationId'])
@@ -76,7 +76,7 @@ class JobQueue
             @inflight -= 1
           end
         end
-      end
+      #end
     end
   end
 

@@ -16,7 +16,7 @@ job_queue = JobQueue.new(
 
 # Start background tasks using Async in a non-blocking background thread and wait on them.
 Async do
-  1.upto(2) do |i|
+  1.upto(16) do |i|
     notify&.send(status: "job_queue_start", size: i)
     Async do
       job_queue.start
