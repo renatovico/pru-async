@@ -34,7 +34,7 @@ class JobQueue
   # Start worker tasks that consume from the queue.
   def start(parent)
     # Process items from the queue:
-    idler = Async::Semaphore.new(40, parent: parent)
+    idler = Async::Semaphore.new(30, parent: parent)
 
     while (job = @queue.pop)
       idler.async do
