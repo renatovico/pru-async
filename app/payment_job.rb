@@ -46,7 +46,7 @@ class PaymentJob
 
   def try_processor(processor_name, payload)
     time_request = Time.now.iso8601(3)
-    Async do |task|
+    Sync do |task|
       task.with_timeout(0.05) do
         url = "http://payment-processor-#{processor_name}:8080/payments"
         headers = [['content-type', 'application/json']]
