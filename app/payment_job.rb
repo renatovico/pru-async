@@ -31,7 +31,6 @@ class PaymentJob
     # Try default processor first if allowed
     result, time = try_processor(processor, payload_job)
     if result
-      @store.save(correlation_id: correlation_id, processor: processor, amount: amount, timestamp: time)
       record_success(processor)
       true
     else
@@ -56,6 +55,11 @@ class PaymentJob
         # Request will timeout after 2 seconds
         response = Async::HTTP::Internet.post(url, headers, body)
         ok = response.status >= 200 && response.status < 300
+        if ok
+          correlation_id = payload['correlationId']
+          amount = payload['amount']
+          @store.save(correlation_id: , processor: processor_name, amount: , timestamp:time_request )
+        end
         [ok, time_request]
       ensure
         response&.close
