@@ -15,6 +15,10 @@ services:
     hostname: api01
     environment:
       - REDIS_URL=redis://redis:6379/0
+      - RUBY_GC_HEAP_INIT_SLOTS=10000
+      - RUBY_GC_HEAP_FREE_SLOTS=4096
+      - RUBY_GC_HEAP_GROWTH_FACTOR=1.2
+      - RUBY_GC_HEAP_GROWTH_MAX_SLOTS=10000
     volumes:
       - .:/app
       - rubygems_v3:/usr/local/bundle
@@ -27,7 +31,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
+          cpus: '0.6'
           memory: '140MB'
 
   api02:
@@ -46,14 +50,14 @@ services:
     deploy:
       resources:
         limits:
-         cpus: '0.1'
-         memory: '35MB'
+          cpus: '0.1'
+          memory: '30MB'
     volumes:
       - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
     command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
 
   nginx:
-    image: nginx
+    image: nginx:alpine
     container_name: nginx
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
@@ -69,7 +73,8 @@ services:
       resources:
         limits:
           cpus: '0.2'
-          memory: '35MB'
+          memory: '40MB'
+
 volumes:
   rubygems_v3:
 

@@ -38,7 +38,7 @@ class JobQueue
   def start()
     @notify&.send(status: "job_queue_start")
     # Process items from the queue:
-    idler = Async::Semaphore.new(5)
+    idler = Async::Semaphore.new(10)
 
     while (job = @queue.pop)
       maybe_backoff_due_to_failures
