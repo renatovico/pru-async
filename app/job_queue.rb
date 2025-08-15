@@ -45,7 +45,7 @@ class JobQueue
       # idler.async do
         if job['retries'] > @failure_retry_threshold
             @notify&.send(status: "job_failed_permanently", job_id: job['correlationId'], retries: job['retries'])
-            @store.remove_payment(correlation_id: job['correlationId'])
+            #@store.remove_payment(correlation_id: job['correlationId'])
             @errors += 1
         else
           begin

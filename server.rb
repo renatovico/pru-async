@@ -88,16 +88,16 @@ class PruApp
     return json(400, { error: 'Missing correlationId' }) if correlation_id.nil? || correlation_id.to_s.empty?
     return json(400, { error: 'Missing amount' }) if amount.nil? || amount.to_s.empty?
 
-    accepted = @store.begin_payment(correlation_id: correlation_id)
-    unless accepted
-      @notify&.send(status: "duplicate_payment_rejected", correlation_id: correlation_id)
-      return json(409, { error: 'Duplicate correlationId', correlationId: correlation_id })
-    end
+    # accepted = @store.begin_payment(correlation_id: correlation_id)
+    #unless accepted
+    # @notify&.send(status: "duplicate_payment_rejected", correlation_id: correlation_id)
+    #  return json(409, { error: 'Duplicate correlationId', correlationId: correlation_id })
+    #end
 
     if @job_queue.enqueue data
       json(201, { message: 'Payment created' })
     else
-      @store.remove_payment(correlation_id: correlation_id)
+      #@store.remove_payment(correlation_id: correlation_id)
       json(501, { error: 'Payment enqueue failed', correlationId: correlation_id })
     end
 
