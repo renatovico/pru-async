@@ -28,7 +28,7 @@ services:
       resources:
         limits:
           cpus: '0.5'
-          memory: '155MB'
+          memory: '140MB'
 
   api02:
     <<: *api
@@ -47,7 +47,7 @@ services:
       resources:
         limits:
          cpus: '0.1'
-         memory: '20MB'
+         memory: '35MB'
     volumes:
       - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
     command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
@@ -69,7 +69,7 @@ services:
       resources:
         limits:
           cpus: '0.2'
-          memory: '20MB'
+          memory: '35MB'
 volumes:
   rubygems_v3:
 
