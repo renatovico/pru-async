@@ -45,7 +45,6 @@ class PaymentJob
 
     # Try default processor first if allowed
     if try_processor(processor, job)
-      @store.save(correlation_id: job[2][:correlationId], processor: processor, amount: job[2][:amount], timestamp: job[2][:requestedAt])
       record_success(processor)
       true
     else
@@ -59,14 +58,18 @@ class PaymentJob
   end
 
   def try_processor(processor_name, job)
-    Async::Task.current.with_timeout(0.5) do
+    Async::Task.current.with_timeout(0.9) do
       url = "http://payment-processor-#{processor_name}:8080/payments"
       headers = [['content-type', 'application/json']]
       job[2][:requestedAt] = Time.now.iso8601(3)
       body = job[2].to_json
 
       response = Async::HTTP::Internet.post(url, headers, body)
-      response.status >= 200 && response.status < 300
+      result = response.status >= 200 && response.status < 300
+      if result
+        @store.save(correlation_id: job[2][:correlationId], processor: processor_name, amount: job[2][:amount], timestamp: job[2][:requestedAt])
+      end
+      result
     ensure
       response&.close
     end
