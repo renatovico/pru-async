@@ -97,19 +97,13 @@ class PaymentJob
     end
 
     # Only use fallback for 3 seconds, then try default again
-    if current_time - @fallback_mode_start_time <= 3
+    if current_time - @fallback_mode_start_time <= 2
       # Check if fallback processor is available
-      if @last_failure_fallback_time.nil? || current_time - @last_failure_fallback_time > 20
         return 'fallback'
-      end
-    else
-      # After 3 seconds in fallback mode, force switch back to default
-      @fallback_mode_start_time = nil
-      return 'default'
     end
 
-    nil # No processor available now
+    return 'default'
   rescue => e
-    nil # In case of error, return nil to avoid processing
+    return 'default'
   end
 end

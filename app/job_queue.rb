@@ -15,8 +15,8 @@ class JobQueue
     @inflight = 0
     @done = 0
     @errors = 0
-    @failure_threshold = 150
-    @failure_retry_threshold = 50
+    @failure_threshold = 20
+    @failure_retry_threshold = 100
     @failure_backoff_seconds = 1
     @failure_events = 0
     @notify = notify
@@ -59,15 +59,7 @@ class JobQueue
               job['retries'] += 1
               @notify&.send(status: "job_failed", job_id: job['correlationId'], retries: job['retries'])
               @failure_events += 1
-              # Add exponential backoff based on retry count
-              if job['retries'] > 1
-                Async do
-                  Async::Task.current.sleep([job['retries'] * 0.02, 3].min)
-                  @queue.push(job)
-                end
-              else
-                @queue.push(job)
-              end
+              @queue.push(job)
             end
           rescue => e
             @notify&.send(status: "job_failed", job_id: job['correlationId'], error: e.message, exception: e.class.name)
@@ -105,7 +97,7 @@ class JobQueue
   def maybe_backoff_due_to_failures
     if @failure_events > @failure_threshold
       # Progressive backoff based on the number of failures
-      backoff_time = [@failure_backoff_seconds * (@failure_events / @failure_threshold), 1].min
+      backoff_time = [@failure_backoff_seconds * (@failure_events / @failure_threshold), 20].min
       Async::Task.current.sleep(backoff_time)
     end
   end
