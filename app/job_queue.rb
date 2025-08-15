@@ -39,7 +39,7 @@ class JobQueue
 
 
     while (job = @queue.pop)
-      maybe_backoff_due_to_failures
+      #maybe_backoff_due_to_failures
       # semaphore.async do |task|
       process_job(job, thread_id)
       # end
@@ -68,7 +68,6 @@ class JobQueue
   private
 
   def process_job(job, thread_id)
-    Sync do
       if job[0] > @failure_retry_threshold
         @errors += 1
       else
@@ -94,8 +93,6 @@ class JobQueue
           @inflight -= 1
         end
       end
-
-    end
   end
 
   def maybe_backoff_due_to_failures
