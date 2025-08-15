@@ -1,6 +1,6 @@
 services:
   api01: &api
-    image: renatoelias/pru-async:v4
+    image: renatoelias/pru-async:v5
     container_name: api01
     hostname: api01
     environment:
