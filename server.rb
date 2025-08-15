@@ -1,7 +1,7 @@
 # $stdout.sync = true
 
 require 'json'
-require 'uri'
+require 'cgi'
 require 'async'
 require 'async/http/server'
 require 'async/http/endpoint'
@@ -12,110 +12,76 @@ require_relative 'app/payment_job'
 require_relative 'app/job_queue'
 require 'async/container/notify/console'
 
-DEBUG = false
 class PruApp
-  def initialize(store:, job_queue:, notify:)
-    @store = store
-    @job_queue = job_queue
+  def initialize(notify:)
     @notify = notify
-    @route_status_counts = Hash.new { |h, k| h[k] = Hash.new(0) }
-    @total_requests = 0
-    @total_duration_ms = 0.0
-    @route_duration_ms = Hash.new(0.0)
+
+    redis_endpoint = Async::Redis::Endpoint.parse(ENV['REDIS_URL'] || 'redis://redis:6379/0')
+    redis_client = Async::Redis::Client.new(redis_endpoint)
+    @store = Store.new(redis_client: redis_client)
+    @job_queue = JobQueue.new(
+      redis_client: redis_client,
+      store: @store
+    )
+
+    # Start background tasks using Async in a non-blocking background thread and wait on them.
+    Async do
+      1.upto(3) do |i|
+        notify&.send(status: "job_queue_start", size: i)
+        Async do
+          @job_queue.start
+        end
+      end
+    end
   end
 
-  # Handle an incoming Protocol::HTTP::Request and return Protocol::HTTP::Response
-  def call(request)
-    start_t = Process.clock_gettime(Process::CLOCK_MONOTONIC) if DEBUG
-    method = request.method
-    path = URI.parse(request.path || '/').path
+  def call(request_envt)
+    method = request_envt['REQUEST_METHOD']
+    path = request_envt['PATH_INFO']
     # Route and obtain response
-    response = case [method, path]
+     case [method, path]
     when ['POST', '/payments']
-      handle_payments(request)
+      handle_payments(request_envt)
     when ['GET', '/payments-summary']
-      handle_payments_summary(request)
+      handle_payments_summary(request_envt)
     when ['GET', '/health']
       handle_health
     when ['POST', '/purge-payments']
-      handle_purge_payments(request)
+      handle_purge_payments(request_envt)
     else
       json(404, { error: 'Not Found' })
-    end
-
-    # Track counts per route and status code after we have the response
-    begin
-      status = response.status
-      @route_status_counts[path][status] += 1
-      @total_requests += 1
-    rescue => e
-      @notify&.send(status: "metrics_update_failed", error: e.message)
-    end
-
-    response
-  ensure
-    # Always record latency, even if routing raises later.
-    if DEBUG
-      begin
-        elapsed_ms = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_t) * 1000.0
-        @total_duration_ms += elapsed_ms
-        @route_duration_ms[path] += elapsed_ms
-      rescue
-        # ignore timing errors
-      end
     end
   end
 
   private
 
   def json(status, object)
-    body = object.to_json
     headers = {
       'content-type' => 'application/json',
     }
-    ::Protocol::HTTP::Response[status, headers, [body]]
+
+    [status, headers, [object.to_json]]
   end
 
-  def handle_payments(request)
+  def handle_payments(env)
+    request = env["rack.input"]
     body = request.read
-    return json(400, { error: 'Bad Request' }) if body.nil? || body.empty?
+    return json(400, { error: 'Bad Request' }) if body.nil?
 
-    # Enqueue work into background workers (outside the HTTP request fiber).
-    data = JSON.parse(body)
-    data['retries'] = 0
-    correlation_id = data['correlationId']
-    amount = data['amount']
-    return json(400, { error: 'Missing correlationId' }) if correlation_id.nil? || correlation_id.to_s.empty?
-    return json(400, { error: 'Missing amount' }) if amount.nil? || amount.to_s.empty?
-
-    # accepted = @store.begin_payment(correlation_id: correlation_id)
-    #unless accepted
-    # @notify&.send(status: "duplicate_payment_rejected", correlation_id: correlation_id)
-    #  return json(409, { error: 'Duplicate correlationId', correlationId: correlation_id })
-    #end
-
-    if @job_queue.enqueue data
-      json(201, { message: 'Payment created' })
-    else
-      #@store.remove_payment(correlation_id: correlation_id)
-      json(501, { error: 'Payment enqueue failed', correlationId: correlation_id })
+    Async do
+      @job_queue.enqueue body.dup
     end
-
-  rescue JSON::ParserError
-    json(400, { error: 'Invalid JSON' })
+      json(201, { message: 'Payment created' })
   rescue => e
-    @notify&.send(status: "payment_request_failed", correlationId: correlation_id, error: e.message)
+    @notify&.send(status: "payment_request_failed",  error: e.message)
     json(500, { error: 'Internal Server Error', details: e.message })
   end
 
   def handle_payments_summary(request)
-    # request.path may include query: /payments-summary?from=...&to=...
-    uri = URI.parse(request.path || '/payments-summary')
-    params = uri.query ? URI.decode_www_form(uri.query).to_h : {}
-
-    json(200, @store.summary(from: params['from'], to: params['to']))
+    params = CGI.parse request["QUERY_STRING"]
+    json(200, @store.summary(from: params.fetch('from', []), to: params.fetch('to', [])) )
   rescue => e
-    @notify&.send(status: "payments_summary_failed", error: e.message)
+    @notify&.send(status: "payments_summary_failed", error: e.message, backtrace: e.backtrace.join("\n"))
     json(500, { error: 'Internal Server Error' })
   end
 
@@ -126,14 +92,6 @@ class PruApp
 
   def handle_health
     # Deep copy and normalize status code keys to strings for JSON stability
-    routes = {}
-    @route_status_counts.each do |route, statuses|
-      routes[route] = {}
-      statuses.each do |code, count|
-        routes[route][code.to_s] = count
-      end
-    end
-
     queue_state = {
       'inflight' =>  @job_queue.inflight,
       'done' => @job_queue.done,
@@ -141,28 +99,8 @@ class PruApp
       'total' => @job_queue.queue.size
     }
 
-    mean_ms = if @total_requests > 0
-      @total_duration_ms / @total_requests
-    else
-      0.0
-    end
-
-    route_means = {}
-    @route_status_counts.each do |route, statuses|
-      count = statuses.values.inject(0, :+)
-      if count > 0
-        route_means[route] = @route_duration_ms[route] / count
-      else
-        route_means[route] = 0.0
-      end
-    end
-
     json(200, {
       ok: true,
-      totalRequests: @total_requests,
-      meanResponseTimeMs: mean_ms,
-      routes: routes,
-      routesMeanResponseTimeMs: route_means,
       queue: queue_state
     })
   end

@@ -15,7 +15,7 @@ class Store
 
   # Summarize payments, optionally filtered by timestamp window
   def summary(from: nil, to: nil)
-    calculate_filtered_summary(from, to)
+    calculate_filtered_summary(from[0], to[0])
   end
 
   def purge_all

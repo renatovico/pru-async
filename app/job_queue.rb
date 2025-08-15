@@ -43,26 +43,22 @@ class JobQueue
     while (job = @queue.pop)
       maybe_backoff_due_to_failures
       # idler.async do
-        if job['retries'] > @failure_retry_threshold
-            @notify&.send(status: "job_failed_permanently", job_id: job['correlationId'], retries: job['retries'])
-            #@store.remove_payment(correlation_id: job['correlationId'])
+        if job[0] > @failure_retry_threshold
             @errors += 1
         else
           begin
             @inflight += 1
 
             if @payment_job.perform_now(job)
-              @notify&.send(status: "job_completed", job_id: job['correlationId'])
               @done += 1
               @failure_events = 0
             else
-              job['retries'] += 1
-              @notify&.send(status: "job_failed", job_id: job['correlationId'], retries: job['retries'])
+              job[0] += 1
               @failure_events += 1
               @queue.push(job)
             end
           rescue => e
-            @notify&.send(status: "job_failed", job_id: job['correlationId'], error: e.message, exception: e.class.name)
+            @notify&.send(status: "job_failed",  error: e.message, exception: e.class.name)
             @failure_events += 1
           ensure
             @inflight -= 1
@@ -78,7 +74,7 @@ class JobQueue
 
   # Enqueue a job (callable). Returns true if enqueued, false if closed.
   def enqueue(data)
-    @queue.push(data)
+    @queue.push([0, data])
     true
   rescue => e
     @notify&.send(status: "job_enqueue_error", error: e.message)

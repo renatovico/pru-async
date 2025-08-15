@@ -16,6 +16,14 @@ class PaymentJob
       return false # without processor now
     end
 
+    # Enqueue work into background workers (outside the HTTP request fiber).
+    data = JSON.parse(payload[1])
+    correlation_id = data['correlationId']
+    amount = data['amount']
+    raise 'Missing correlationId' if correlation_id.nil?
+    raise 'Missing amount' if amount.nil?
+
+
     correlation_id = payload['correlationId']
     amount = payload['amount']
 
