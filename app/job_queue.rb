@@ -14,7 +14,7 @@ class JobQueue
     @errors = 0
     @failure_threshold = 20
     @failure_retry_threshold = 100
-    @failure_backoff_seconds = 1
+    @failure_backoff_seconds = 0.2
     @failure_events = 0
     @notify = notify
   end
