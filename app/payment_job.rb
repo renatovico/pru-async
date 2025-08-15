@@ -10,28 +10,42 @@ class PaymentJob
     @fallback_mode_start_time = nil
   end
 
-  def perform_now(payload)
+  def perform_now(job)
     processor = target_processor
     if processor.nil?
       return false # without processor now
     end
 
     # Enqueue work into background workers (outside the HTTP request fiber).
-    data = JSON.parse(payload[1])
-    correlation_id = data['correlationId']
-    amount = data['amount']
-    raise 'Missing correlationId' if correlation_id.nil?
-    raise 'Missing amount' if amount.nil?
 
-    payload_job = {
-      correlationId: correlation_id,
-      amount: amount,
-    }
+    payload = job[2]
+
+    if payload.nil?
+      data = JSON.parse(job[1])
+      raise 'Missing correlationId' if data['correlationId'].nil?
+      raise 'Missing amount' if data['amount'].nil?
+
+      job[2] = {
+        correlationId: data['correlationId'],
+        amount: data['amount'],
+      }
+    end
+
+    retries = job[0] || 0
+
+    if retries > 0
+      if check_result(job[2], job[3])
+        @store.save(correlation_id: job[2][:correlationId], processor: processor, amount: job[2][:amount], timestamp: job[2][:requestedAt])
+        record_success(processor)
+        return true
+      end
+    end
+
+    job[3] = processor
 
     # Try default processor first if allowed
-    result, time = try_processor(processor, payload_job)
-    if result
-      @store.save(correlation_id: correlation_id, processor: processor, amount: amount, timestamp: time)
+    if try_processor(processor, job)
+      @store.save(correlation_id: job[2][:correlationId], processor: processor, amount: job[2][:amount], timestamp: job[2][:requestedAt])
       record_success(processor)
       true
     else
@@ -44,33 +58,34 @@ class PaymentJob
     false
   end
 
-  def try_processor(processor_name, payload)
-    time_request = Time.now.iso8601(3)
-    Sync do |task|
-      task.with_timeout(0.05) do
-        url = "http://payment-processor-#{processor_name}:8080/payments"
-        headers = [['content-type', 'application/json']]
-        payload['requestedAt'] = time_request
-        body = payload.to_json
+  def try_processor(processor_name, job)
+    Async::Task.current.with_timeout(0.5) do
+      url = "http://payment-processor-#{processor_name}:8080/payments"
+      headers = [['content-type', 'application/json']]
+      job[2][:requestedAt] = Time.now.iso8601(3)
+      body = job[2].to_json
 
-        response = Async::HTTP::Internet.post(url, headers, body)
-        ok = response.status >= 200 && response.status < 300
-        [ok, time_request]
-      ensure
-        response&.close
-      end
-    rescue Async::TimeoutError
-      #check if process is not processed
-      result = Sync do
-        url = "http://payment-processor-#{processor_name}:8080/payments/#{payload['correlationId']}"
-
-        response = Async::HTTP::Internet.get(url)
-        response.status >= 200 && response.status < 300
-      end
-      [result, time_request]
-    rescue => e
-      [false, nil]
+      response = Async::HTTP::Internet.post(url, headers, body)
+      response.status >= 200 && response.status < 300
+    ensure
+      response&.close
     end
+  rescue
+    check_result(job[2], processor_name)
+  end
+
+  protected
+
+  def check_result(payload, processor_name)
+    url = "http://payment-processor-#{processor_name}:8080/payments/#{payload[:correlationId]}"
+    response = Async::HTTP::Internet.get(url)
+    # puts "Response status: #{response.status} for correlationId: #{payload[:correlationId]}" if response.status != 404
+    response.status >= 200 && response.status < 300
+  rescue => e
+    puts "Error checking result for #{processor_name}: #{e.message} - #{e.backtrace[0..10].join("\n")}"
+    false
+  ensure
+    response&.close
   end
 
   private

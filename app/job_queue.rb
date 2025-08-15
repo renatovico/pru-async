@@ -1,6 +1,6 @@
 require 'async'
+require 'async/idler'
 require 'async/semaphore'
-require 'async/queue'
 require_relative 'payment_job'
 
 class JobQueue
@@ -13,7 +13,7 @@ class JobQueue
     @done = 0
     @errors = 0
     @failure_threshold = 20
-    @failure_retry_threshold = 100
+    @failure_retry_threshold = 60
     @failure_backoff_seconds = 0.2
     @failure_events = 0
     @notify = notify
@@ -32,20 +32,16 @@ class JobQueue
   end
 
   # Start worker tasks that consume from the queue.
-  def start(thread_id: nil)
-    @notify&.send(status: "job_queue_start", thread_id: thread_id)
+  def start(parent)
     # Process items from the queue:
-    # semaphore = Async::Semaphore.new(4)
-
+    idler = Async::Semaphore.new(40, parent: parent)
 
     while (job = @queue.pop)
-      #maybe_backoff_due_to_failures
-      # semaphore.async do |task|
-      process_job(job, thread_id)
-      # end
+      idler.async do
+        process_job(job)
+      end
     end
 
-    @notify&.send(status: "job_queue_finish", thread_id: thread_id)
   end
 
   def queue
@@ -55,22 +51,22 @@ class JobQueue
   # Enqueue a job (callable). Returns true if enqueued, false if closed.
   def enqueue(data)
     @queue.push([0, data])
-    @notify&.send(status: "job_enqueued", data: data)
   end
 
   # Close the queue: signal workers to stop after draining.
   def close
     @queue.close
   rescue => e
-    @notify&.send(status: "queue_close_error", error: e.message)
+    puts "Error closing queue: #{e.message} - #{e.backtrace.join("\n")}"
   end
 
   private
 
-  def process_job(job, thread_id)
+  def process_job(job)
       if job[0] > @failure_retry_threshold
         @errors += 1
       else
+        # puts "Processing job: #{job.inspect}" if job[0] > 0
         begin
           @inflight += 1
 
@@ -82,11 +78,11 @@ class JobQueue
           else
             job[0] += 1
             @failure_events += 1
+            # Async::Task.current.sleep(0.01 * job[0] ** 2  ) # Short sleep to avoid tight loop
             @queue.push(job)
           end
         rescue => e
-          puts "Error processing job: #{e.message} on thread #{thread_id} - #{e.backtrace.join("\n")}"
-          @notify&.send(status: "job_failed", error: e.message, backtrace: e.backtrace, thread_id: thread_id)
+          puts "Error processing job: #{e.message}  - #{e.backtrace.join("\n")}"
           @failure_events += 1
           @queue.push(job) # Requeue the job for retry
         ensure
