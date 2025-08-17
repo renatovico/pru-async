@@ -53,6 +53,12 @@ class Store
     default_payments = @redis.call('ZRANGEBYSCORE', 'payments_log_default', from_score, to_score)
     fallback_payments =  @redis.call('ZRANGEBYSCORE', 'payments_log_fallback', from_score, to_score)
 
+    if !default_payments.is_a?(Array) && !fallback_payments.is_a?(Array)
+      Console.warn "Invalid data types returned from Redis for payments logs - #{default_payments.inspect} and #{fallback_payments.inspect}" if defined?(Console)
+      return summary
+    end
+
+
     summary['default'][:totalRequests] += default_payments&.size || 0
     default_payments&.each do |data|
       amount_str = JSON.parse(data)['a']

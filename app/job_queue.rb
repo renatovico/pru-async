@@ -5,9 +5,9 @@ require 'console'
 require_relative 'payment_job'
 
 class JobQueue
-  DEFAULT_CONCURRENCY = (ENV['JOB_CONCURRENCY'] || 10).to_i
-  RETRY_CONCURRENCY = (ENV['JOB_CONCURRENCY_RETRY'] || 15).to_i
-  DEAD_CONCURRENCY  = (ENV['JOB_CONCURRENCY_DEAD']  ||  10).to_i
+  DEFAULT_CONCURRENCY = (ENV['JOB_CONCURRENCY'] || 1).to_i
+  RETRY_CONCURRENCY = (ENV['JOB_CONCURRENCY_RETRY'] || 1).to_i
+  DEAD_CONCURRENCY  = (ENV['JOB_CONCURRENCY_DEAD']  ||  1).to_i
 
   RETRY_DELAY_BASE_MS = (ENV['RETRY_DELAY_BASE_MS'] || 0.5).to_f # base delay for retry queue (ms)
   DEAD_DELAY_BASE_MS  = (ENV['DEAD_DELAY_BASE_MS']  ||  4).to_f # base delay for dead queue (ms)

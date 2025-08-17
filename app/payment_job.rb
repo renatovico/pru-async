@@ -13,9 +13,9 @@ class PaymentJob
     @last_failure_default_time = nil
     @fallback_mode_start_time = nil
     @clients = {}
-    @request_timeout = (ENV['ASYNC_REQUEST_TIMEOUT'] || 2.5).to_f
-    @check_timeout = (ENV['ASYNC_CHECK_TIMEOUT'] || 2).to_f
-    @concurrency = (ENV['ASYNC_CONCURRENCY'] || 50).to_i
+    @request_timeout = (ENV['ASYNC_REQUEST_TIMEOUT'] || 5).to_f
+    @check_timeout = (ENV['ASYNC_CHECK_TIMEOUT'] || 4).to_f
+    @concurrency = (ENV['ASYNC_CONCURRENCY'] || 15).to_i
   end
 
   def perform_now(job)

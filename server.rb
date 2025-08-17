@@ -26,12 +26,11 @@ class PruApp
     @not_found_response = json(404, { error: 'Not Found' })
     @internal_error_response = json(500, { error: 'Internal Server Error' })
 
-    Async do |task|
-      task.defer_stop do
-        # Start worker tasks that consume from the queue.
+     Async do |task|
+       task.defer_stop do
         @job_queue.start(task)
       end
-    end
+     end
   end
 
   def call(request_envt)
@@ -61,12 +60,12 @@ class PruApp
   end
 
   def handle_payments(env)
-    request = env["rack.input"]
-    body = request.read
-    return @bad_request_response if body.nil? || body.empty?
-
-    Async do
-      @job_queue.enqueue(body)
+    Async do |task|
+      task.defer_stop do
+        request = env["rack.input"]
+        body = request.read
+        @job_queue.enqueue(body)
+      end
     end
 
     @payment_created_response
@@ -77,7 +76,9 @@ class PruApp
 
   def handle_payments_summary(request)
     params = CGI.parse request["QUERY_STRING"]
-    sleep 0.5 # wait for the job queue to process some payments
+    Async do
+      sleep 1 # wait for the job queue to process some payments
+    end
     json(200, @store.summary(from: params.fetch('from', []), to: params.fetch('to', [])))
   rescue => e
     Console.error("payments_summary_failed", error: e.message)
