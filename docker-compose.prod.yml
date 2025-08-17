@@ -35,6 +35,17 @@ services:
       net.ipv4.tcp_max_tw_buckets: 65536
       net.ipv4.ip_local_port_range: 1024 65535
       net.ipv4.tcp_tw_reuse: 1
+      net.core.rmem_max: 16777216
+      net.core.wmem_max: 16777216
+      net.ipv4.tcp_rmem: "4096 87380 16777216"
+      net.ipv4.tcp_wmem: "4096 87380 16777216"
+      net.ipv4.tcp_fastopen: 3
+      net.ipv4.tcp_low_latency: 1
+      net.ipv4.tcp_syncookies: 1
+      net.ipv4.tcp_synack_retries: 2
+      net.ipv4.neigh.default.gc_thresh1: 1024
+      net.ipv4.neigh.default.gc_thresh2: 2048
+      net.ipv4.neigh.default.gc_thresh3: 4096
 
   api02:
     <<: *api
@@ -71,6 +82,17 @@ services:
       net.ipv4.tcp_max_tw_buckets: 65536
       net.ipv4.ip_local_port_range: 1024 65535
       net.ipv4.tcp_tw_reuse: 1
+      net.core.rmem_max: 16777216
+      net.core.wmem_max: 16777216
+      net.ipv4.tcp_rmem: "4096 87380 16777216"
+      net.ipv4.tcp_wmem: "4096 87380 16777216"
+      net.ipv4.tcp_fastopen: 3
+      net.ipv4.tcp_low_latency: 1
+      net.ipv4.tcp_syncookies: 1
+      net.ipv4.tcp_synack_retries: 2
+      net.ipv4.neigh.default.gc_thresh1: 1024
+      net.ipv4.neigh.default.gc_thresh2: 2048
+      net.ipv4.neigh.default.gc_thresh3: 4096
 
   nginx:
     image: nginx:alpine
@@ -104,6 +126,17 @@ services:
       net.ipv4.tcp_max_tw_buckets: 65536
       net.ipv4.ip_local_port_range: 1024 65535
       net.ipv4.tcp_tw_reuse: 1
+      net.core.rmem_max: 16777216
+      net.core.wmem_max: 16777216
+      net.ipv4.tcp_rmem: "4096 87380 16777216"
+      net.ipv4.tcp_wmem: "4096 87380 16777216"
+      net.ipv4.tcp_fastopen: 3
+      net.ipv4.tcp_low_latency: 1
+      net.ipv4.tcp_syncookies: 1
+      net.ipv4.tcp_synack_retries: 2
+      net.ipv4.neigh.default.gc_thresh1: 1024
+      net.ipv4.neigh.default.gc_thresh2: 2048
+      net.ipv4.neigh.default.gc_thresh3: 4096
 
 networks:
   payment-processor:
