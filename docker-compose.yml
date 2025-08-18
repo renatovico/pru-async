@@ -9,7 +9,6 @@ services:
       - REDIS_URL=redis://redis_pru:6380/0
     volumes:
       - ./nginx.api.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
-      - ./lua:/usr/local/openresty/nginx/lua:ro
     networks:
       - payment-processor
       - net
