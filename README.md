@@ -8,10 +8,10 @@
 |  _____)|     __)| |   | |
 | (      | (\ (   | |   | |
 | )      | ) \ \__| (___) |
-|/       |/   \__/(_______)/ASYNC
+|/       |/   \__/(_______)/NGINX
 ```
 
-Mais uma submissão para a [Rinha de Backend 2025](https://github.com/zanfranceschi/rinha-de-backend-2025), desta vez em Ruby.
+Mais uma submissão para a [Rinha de Backend 2025](https://github.com/zanfranceschi/rinha-de-backend-2025), desta vez em NGINX COM LB.
 
 Fork do PRU DO https://github.com/leandronsp/pru do LeandroSP
 
