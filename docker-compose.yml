@@ -36,7 +36,7 @@ services:
       net.ipv4.tcp_fastopen: 3
       net.ipv4.tcp_syncookies: 1
       net.ipv4.tcp_synack_retries: 2
-      net.ipv4.tcp_congestion_control: bbr
+      # net.ipv4.tcp_congestion_control: bbr
 
   api02:
     <<: *api
@@ -78,7 +78,7 @@ services:
       net.ipv4.tcp_fastopen: 3
       net.ipv4.tcp_syncookies: 1
       net.ipv4.tcp_synack_retries: 2
-      net.ipv4.tcp_congestion_control: bbr
+      # net.ipv4.tcp_congestion_control: bbr
 
   nginx:
     image: nginx
@@ -115,7 +115,7 @@ services:
       net.ipv4.tcp_fastopen: 3
       net.ipv4.tcp_syncookies: 1
       net.ipv4.tcp_synack_retries: 2
-      net.ipv4.tcp_congestion_control: bbr
+      # net.ipv4.tcp_congestion_control: bbr
 volumes:
   rubygems_v3:
 
